@@ -1,0 +1,28 @@
+{
+  "name": "org.visualpinball.engine.dmd",
+  "version": "0.0.1-preview.1",
+  "displayName": "Visual Pinball Engine (DMD)",
+  "description": "DMD Extensions / LibDmd support for VPE.",
+  "keywords": [
+    "Unity",
+    "DMD",
+    "LibDmd",
+    "DMD Extensions"
+  ],
+  "unity": "6000.5",
+  "unityRelease": "0f1",
+  "dependencies": {
+    "org.visualpinball.engine.unity": "0.0.1-preview.119"
+  },
+  "author": "freezy <freezy@vpdb.io>",
+  "documentationUrl": "https://docs.visualpinball.org/",
+  "changelogUrl": "https://docs.visualpinball.org/CHANGELOG.html",
+  "licensesUrl": "https://github.com/VisualPinball/VisualPinball.Engine.DMD/blob/master/LICENSE",
+  "repository": {
+    "url": "https://github.com/VisualPinball/VisualPinball.Engine.DMD.git",
+    "type": "git"
+  },
+  "publishConfig": {
+    "registry": "https://registry.visualpinball.org"
+  }
+}

@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <RuntimeIdentifiers>win-x64;linux-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
+    <LibDmdExtensionsRoot Condition="'$(LibDmdExtensionsRoot)' == ''">C:\Development\dmd-extensions</LibDmdExtensionsRoot>
+    <LibDmdCoreProject>$(LibDmdExtensionsRoot)\LibDmd.Core\LibDmd.Core.csproj</LibDmdCoreProject>
+    <LibDmdNativeRoot>$(LibDmdExtensionsRoot)\native\nuget\runtimes</LibDmdNativeRoot>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == ''">
+    <RuntimeIdentifier Condition="$([MSBuild]::IsOSPlatform('Windows'))">win-x64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="$([MSBuild]::IsOSPlatform('OSX')) And '$(PlatformTarget)' == 'arm64'">osx-arm64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="$([MSBuild]::IsOSPlatform('OSX')) And '$(PlatformTarget)' != 'arm64'">osx-x64</RuntimeIdentifier>
+    <RuntimeIdentifier Condition="$([MSBuild]::IsOSPlatform('Linux'))">linux-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(LibDmdCoreProject)" />
+  </ItemGroup>
+
+  <Target Name="PluginsDeploy" AfterTargets="AfterBuild">
+    <PropertyGroup>
+      <UnityPluginsDir>..\VisualPinball.Engine.DMD.Unity\Plugins\$(RuntimeIdentifier)</UnityPluginsDir>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <Plugins Include="$(OutDir)*.dll" Exclude="$(OutDir)NLog.dll" />
+      <Plugins Include="$(LibDmdNativeRoot)\$(RuntimeIdentifier)\native\*" />
+      <StaleNLogPlugins Include="..\VisualPinball.Engine.DMD.Unity\Plugins\**\NLog.dll" />
+      <StaleNLogPlugins Include="..\VisualPinball.Engine.DMD.Unity\Plugins\**\NLog.dll.meta" />
+    </ItemGroup>
+
+    <Message Text="PluginsDeploy ($(RuntimeIdentifier)): @(Plugins)" Importance="High" />
+    <MakeDir Directories="$(UnityPluginsDir)" />
+    <Copy SourceFiles="@(Plugins)" DestinationFolder="$(UnityPluginsDir)" SkipUnchangedFiles="true" />
+    <Delete Files="@(StaleNLogPlugins)" />
+  </Target>
+</Project>

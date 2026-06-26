@@ -1,0 +1,19 @@
+{
+	"name": "VisualPinball.Engine.DMD.Unity.Editor",
+	"rootNamespace": "VisualPinball.Engine.DMD.Unity.Editor",
+	"references": [
+		"VisualPinball.Engine",
+		"VisualPinball.Unity",
+		"VisualPinball.Unity.Editor",
+		"VisualPinball.Engine.DMD.Unity"
+	],
+	"includePlatforms": [ "Editor" ],
+	"excludePlatforms": [],
+	"allowUnsafeCode": true,
+	"overrideReferences": false,
+	"precompiledReferences": [],
+	"autoReferenced": true,
+	"defineConstraints": [],
+	"versionDefines": [],
+	"noEngineReferences": false
+}

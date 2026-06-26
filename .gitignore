@@ -1,0 +1,17 @@
+bin/
+obj/
+.vs/
+.idea/
+artifacts/
+*.user
+*.suo
+*.rsuser
+*.nupkg
+*.snupkg
+
+# The proxy project copies package binaries here during local builds.
+VisualPinball.Engine.DMD.Unity/Plugins/**/*.dll
+VisualPinball.Engine.DMD.Unity/Plugins/**/*.pdb
+VisualPinball.Engine.DMD.Unity/Plugins/**/*.so
+VisualPinball.Engine.DMD.Unity/Plugins/**/*.so.*
+VisualPinball.Engine.DMD.Unity/Plugins/**/*.dylib
