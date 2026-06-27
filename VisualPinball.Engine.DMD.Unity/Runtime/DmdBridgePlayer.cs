@@ -10,6 +10,9 @@ using LibDmd.Converter.Serum;
 using LibDmd.Converter.Vni;
 using LibDmd.Input;
 using LibDmd.Output;
+using LibDmd.Output.Pin2Dmd;
+using LibDmd.Output.PinDmd3;
+using LibDmd.Output.Pixelcade;
 using LibDmd.Output.ZeDMD;
 using NLog;
 using UnityEngine;
@@ -37,6 +40,13 @@ namespace VisualPinball.Engine.DMD.Unity
 		[SerializeField] private string _zeDmdPort;
 		[SerializeField] [Range(0, 15)] private int _zeDmdBrightness = 8;
 		[SerializeField] private bool _zeDmdDebug;
+		[SerializeField] private bool _enablePinDmd3;
+		[SerializeField] private string _pinDmd3Port;
+		[SerializeField] private bool _enablePixelcade;
+		[SerializeField] private string _pixelcadePort;
+		[SerializeField] private ColorMatrix _pixelcadeColorMatrix = ColorMatrix.Rgb;
+		[SerializeField] private bool _enablePin2Dmd;
+		[SerializeField] private int _pin2DmdOutputDelay = 25;
 
 		[Header("Native Window")]
 		[SerializeField] private bool _enableNativeWindow;
@@ -334,6 +344,52 @@ namespace VisualPinball.Engine.DMD.Unity
 				}
 			}
 
+			if (_settings.EnablePinDmd3) {
+				try {
+					var pinDmd3 = string.IsNullOrWhiteSpace(_settings.PinDmd3Port)
+						? PinDmd3.GetInstance()
+						: PinDmd3.GetInstance(_settings.PinDmd3Port);
+					if (pinDmd3.IsAvailable) {
+						destinations.Add(pinDmd3);
+					} else {
+						Logger.Info("[DMD] PinDMD3 destination not available.");
+						pinDmd3.Dispose();
+					}
+				} catch (Exception exception) {
+					Logger.Warn(exception, "[DMD] Could not initialize PinDMD3 destination.");
+				}
+			}
+
+			if (_settings.EnablePixelcade) {
+				try {
+					var pixelcade = Pixelcade.GetInstance(
+						string.IsNullOrWhiteSpace(_settings.PixelcadePort) ? null : _settings.PixelcadePort,
+						_settings.PixelcadeColorMatrix);
+					if (pixelcade.IsAvailable) {
+						destinations.Add(pixelcade);
+					} else {
+						Logger.Info("[DMD] Pixelcade destination not available.");
+						pixelcade.Dispose();
+					}
+				} catch (Exception exception) {
+					Logger.Warn(exception, "[DMD] Could not initialize Pixelcade destination.");
+				}
+			}
+
+			if (_settings.EnablePin2Dmd) {
+				try {
+					var pin2Dmd = Pin2Dmd.GetInstance(_settings.Pin2DmdOutputDelay);
+					if (pin2Dmd.IsAvailable) {
+						destinations.Add(pin2Dmd);
+					} else {
+						Logger.Info("[DMD] PIN2DMD destination not available.");
+						pin2Dmd.Dispose();
+					}
+				} catch (Exception exception) {
+					Logger.Warn(exception, "[DMD] Could not initialize PIN2DMD destination.");
+				}
+			}
+
 			if (_settings.EnableNativeWindow) {
 				var nativeWindow = NativeWindowDestinationFactory.TryCreate(display, _settings);
 				if (nativeWindow != null) {
@@ -459,6 +515,13 @@ namespace VisualPinball.Engine.DMD.Unity
 				ZeDmdPort = _zeDmdPort,
 				ZeDmdBrightness = _zeDmdBrightness,
 				ZeDmdDebug = _zeDmdDebug,
+				EnablePinDmd3 = _enablePinDmd3,
+				PinDmd3Port = _pinDmd3Port,
+				EnablePixelcade = _enablePixelcade,
+				PixelcadePort = _pixelcadePort,
+				PixelcadeColorMatrix = _pixelcadeColorMatrix,
+				EnablePin2Dmd = _enablePin2Dmd,
+				Pin2DmdOutputDelay = _pin2DmdOutputDelay,
 				EnableNativeWindow = _enableNativeWindow,
 				EnableInSceneDisplay = _enableInSceneDisplay,
 				NativeWindowLeft = _nativeWindowLeft,
@@ -633,6 +696,13 @@ namespace VisualPinball.Engine.DMD.Unity
 		public string ZeDmdPort;
 		public int ZeDmdBrightness;
 		public bool ZeDmdDebug;
+		public bool EnablePinDmd3;
+		public string PinDmd3Port;
+		public bool EnablePixelcade;
+		public string PixelcadePort;
+		public ColorMatrix PixelcadeColorMatrix;
+		public bool EnablePin2Dmd;
+		public int Pin2DmdOutputDelay;
 		public bool EnableNativeWindow;
 		public bool EnableInSceneDisplay;
 		public int NativeWindowLeft;
@@ -670,6 +740,13 @@ namespace VisualPinball.Engine.DMD.Unity
 				&& string.Equals(ZeDmdPort, other.ZeDmdPort, StringComparison.Ordinal)
 				&& ZeDmdBrightness == other.ZeDmdBrightness
 				&& ZeDmdDebug == other.ZeDmdDebug
+				&& EnablePinDmd3 == other.EnablePinDmd3
+				&& string.Equals(PinDmd3Port, other.PinDmd3Port, StringComparison.Ordinal)
+				&& EnablePixelcade == other.EnablePixelcade
+				&& string.Equals(PixelcadePort, other.PixelcadePort, StringComparison.Ordinal)
+				&& PixelcadeColorMatrix == other.PixelcadeColorMatrix
+				&& EnablePin2Dmd == other.EnablePin2Dmd
+				&& Pin2DmdOutputDelay == other.Pin2DmdOutputDelay
 				&& EnableNativeWindow == other.EnableNativeWindow
 				&& EnableInSceneDisplay == other.EnableInSceneDisplay
 				&& NativeWindowLeft == other.NativeWindowLeft
@@ -703,6 +780,13 @@ namespace VisualPinball.Engine.DMD.Unity
 				&& string.Equals(ZeDmdPort, other.ZeDmdPort, StringComparison.Ordinal)
 				&& ZeDmdBrightness == other.ZeDmdBrightness
 				&& ZeDmdDebug == other.ZeDmdDebug
+				&& EnablePinDmd3 == other.EnablePinDmd3
+				&& string.Equals(PinDmd3Port, other.PinDmd3Port, StringComparison.Ordinal)
+				&& EnablePixelcade == other.EnablePixelcade
+				&& string.Equals(PixelcadePort, other.PixelcadePort, StringComparison.Ordinal)
+				&& PixelcadeColorMatrix == other.PixelcadeColorMatrix
+				&& EnablePin2Dmd == other.EnablePin2Dmd
+				&& Pin2DmdOutputDelay == other.Pin2DmdOutputDelay
 				&& EnableNativeWindow == other.EnableNativeWindow
 				&& EnableInSceneDisplay == other.EnableInSceneDisplay
 				&& EnableColorization == other.EnableColorization
@@ -733,6 +817,9 @@ namespace VisualPinball.Engine.DMD.Unity
 				ApplyGlobal(ini, settings);
 				ApplyVirtualDmd(ini, settings);
 				ApplyZeDmd(ini, settings);
+				ApplyPinDmd3(ini, settings);
+				ApplyPixelcade(ini, settings);
+				ApplyPin2Dmd(ini, settings);
 				ApplyGame(ini, settings, Path.GetDirectoryName(resolvedPath));
 				Logger.Info($"[DMD] Loaded DmdDevice.ini from \"{resolvedPath}\".");
 				return settings;
@@ -875,6 +962,38 @@ namespace VisualPinball.Engine.DMD.Unity
 			settings.ZeDmdDebug = GetBool(zeDmd, "debug", settings.ZeDmdDebug);
 		}
 
+		private static void ApplyPinDmd3(Dictionary<string, Dictionary<string, string>> ini, DmdBridgeSettings settings)
+		{
+			if (!ini.TryGetValue("pindmd3", out var pinDmd3)) {
+				return;
+			}
+
+			settings.EnablePinDmd3 = GetBool(pinDmd3, "enabled", settings.EnablePinDmd3);
+			settings.PinDmd3Port = GetString(pinDmd3, "port", settings.PinDmd3Port);
+		}
+
+		private static void ApplyPixelcade(Dictionary<string, Dictionary<string, string>> ini, DmdBridgeSettings settings)
+		{
+			if (!ini.TryGetValue("pixelcade", out var pixelcade)) {
+				return;
+			}
+
+			settings.EnablePixelcade = GetBool(pixelcade, "enabled", settings.EnablePixelcade);
+			settings.PixelcadePort = GetString(pixelcade, "port", settings.PixelcadePort);
+			// dmdext uses "matrix" for the panel channel order (rgb/rbg).
+			settings.PixelcadeColorMatrix = GetEnum(pixelcade, "matrix", settings.PixelcadeColorMatrix);
+		}
+
+		private static void ApplyPin2Dmd(Dictionary<string, Dictionary<string, string>> ini, DmdBridgeSettings settings)
+		{
+			if (!ini.TryGetValue("pin2dmd", out var pin2Dmd)) {
+				return;
+			}
+
+			settings.EnablePin2Dmd = GetBool(pin2Dmd, "enabled", settings.EnablePin2Dmd);
+			settings.Pin2DmdOutputDelay = GetInt(pin2Dmd, "outputdelay", settings.Pin2DmdOutputDelay);
+		}
+
 		private static void ApplyGame(Dictionary<string, Dictionary<string, string>> ini, DmdBridgeSettings settings, string configDirectory)
 		{
 			if (string.IsNullOrWhiteSpace(settings.RomName) || !ini.TryGetValue(settings.RomName, out var game)) {
@@ -935,13 +1054,13 @@ namespace VisualPinball.Engine.DMD.Unity
 			return float.TryParse(Unquote(value), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed : fallback;
 		}
 
-		private static ScalerMode GetEnum(Dictionary<string, string> section, string key, ScalerMode fallback)
+		private static TEnum GetEnum<TEnum>(Dictionary<string, string> section, string key, TEnum fallback) where TEnum : struct
 		{
 			if (!section.TryGetValue(key, out var value)) {
 				return fallback;
 			}
 
-			return Enum.TryParse(Unquote(value), true, out ScalerMode parsed) ? parsed : fallback;
+			return Enum.TryParse(Unquote(value), true, out TEnum parsed) ? parsed : fallback;
 		}
 
 		private static Color GetColor(Dictionary<string, string> section, string key, Color fallback)
