@@ -11,6 +11,8 @@
     <LibDmdCoreProject>$(LibDmdExtensionsRoot)\LibDmd.Core\LibDmd.Core.csproj</LibDmdCoreProject>
     <LibDmdCoreWindowsProject>$(LibDmdExtensionsRoot)\LibDmd.Core.Windows\LibDmd.Core.Windows.csproj</LibDmdCoreWindowsProject>
     <LibDmdCoreSdlProject>$(LibDmdExtensionsRoot)\LibDmd.Core.Sdl\LibDmd.Core.Sdl.csproj</LibDmdCoreSdlProject>
+    <LibDmdSerialShimProject>$(LibDmdExtensionsRoot)\LibDmd.Core.SerialShim\LibDmd.Core.SerialShim.csproj</LibDmdSerialShimProject>
+    <LibDmdSerialShimDll>$(LibDmdExtensionsRoot)\LibDmd.Core.SerialShim\bin\$(Configuration)\netstandard2.0\System.IO.Ports.dll</LibDmdSerialShimDll>
     <LibDmdNativeRoot>$(LibDmdExtensionsRoot)\native\nuget\runtimes</LibDmdNativeRoot>
     <LibDmdCostura64Root>$(LibDmdExtensionsRoot)\LibDmd\Costura64</LibDmdCostura64Root>
   </PropertyGroup>
@@ -24,6 +26,10 @@
 
   <ItemGroup>
     <ProjectReference Include="$(LibDmdCoreProject)" />
+    <!-- Built but NOT compile-referenced (ReferenceOutputAssembly=false): PluginsDeploy ships its
+         output AS System.IO.Ports.dll. The real net6.0+ System.IO.Ports can't load under Unity's
+         Mono (TypeLoadException on SerialPort), so this libserialport-backed shim replaces it. -->
+    <ProjectReference Include="$(LibDmdSerialShimProject)" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
     <ProjectReference Include="$(LibDmdCoreWindowsProject)" />
@@ -36,29 +42,55 @@
 
   <Target Name="PluginsDeploy" AfterTargets="AfterBuild">
     <PropertyGroup>
-      <UnityPluginsDir>..\VisualPinball.Engine.DMD.Unity\Plugins\$(RuntimeIdentifier)</UnityPluginsDir>
+      <UnityPluginsRoot>..\VisualPinball.Engine.DMD.Unity\Plugins</UnityPluginsRoot>
+      <UnityNativeDir>$(UnityPluginsRoot)\$(RuntimeIdentifier)</UnityNativeDir>
+      <!-- All managed assemblies are RID-agnostic, so they live in ONE shared "Any Platform" folder
+           instead of being duplicated per-RID. Duplicated managed copies were a trap: a single-RID
+           rebuild desynced them and silently broke Unity's Editor compilation. Natives stay per-RID. -->
+      <UnityManagedDir>$(UnityPluginsRoot)\Managed</UnityManagedDir>
     </PropertyGroup>
 
     <ItemGroup>
-      <Plugins Include="$(OutDir)*.dll" Exclude="$(OutDir)NLog.dll" />
-      <Plugins Include="$(LibDmdNativeRoot)\$(RuntimeIdentifier)\native\*" />
-      <Plugins Include="$(LibDmdCostura64Root)\ftd2xx.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
-      <Plugins Include="$(LibDmdCostura64Root)\libserialport64-0.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
-      <Plugins Include="$(LibDmdCostura64Root)\libSkiaSharp.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
-      <Plugins Include="$(LibDmdCostura64Root)\sockpp64.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
-      <Plugins Include="$(LibDmdCostura64Root)\sqlite3.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
-      <StaleNLogPlugins Include="..\VisualPinball.Engine.DMD.Unity\Plugins\**\NLog.dll" />
-      <StaleNLogPlugins Include="..\VisualPinball.Engine.DMD.Unity\Plugins\**\NLog.dll.meta" />
-      <StaleWindowsPlugins Include="..\VisualPinball.Engine.DMD.Unity\Plugins\linux-x64\LibDmd.Core.Windows.dll" />
-      <StaleWindowsPlugins Include="..\VisualPinball.Engine.DMD.Unity\Plugins\osx-x64\LibDmd.Core.Windows.dll" />
-      <StaleWindowsPlugins Include="..\VisualPinball.Engine.DMD.Unity\Plugins\osx-arm64\LibDmd.Core.Windows.dll" />
-      <StaleWindowsPlugins Include="..\VisualPinball.Engine.DMD.Unity\Plugins\win-x64\LibDmd.Core.Sdl.dll" />
+      <!-- Managed (shared, one copy). Includes LibDmd.Core, the proxy, the System.* deps, and the
+           platform backend produced by THIS build (LibDmd.Core.Windows on win / LibDmd.Core.Sdl on
+           the others). Both backends only reference LibDmd.Core + NLog and P/Invoke their native
+           lazily, so the one for the "wrong" OS loads dormant and is harmless. The System.IO.Ports
+           facade stub is dropped in favour of the libserialport-backed shim. NLog is provided by VPE. -->
+      <ManagedPlugins Include="$(OutDir)*.dll" Exclude="$(OutDir)NLog.dll;$(OutDir)System.IO.Ports.dll" />
+      <ManagedPlugins Include="$(LibDmdSerialShimDll)" />
+
+      <!-- Native (per-RID). -->
+      <NativePlugins Include="$(LibDmdNativeRoot)\$(RuntimeIdentifier)\native\*" />
+      <NativePlugins Include="$(LibDmdCostura64Root)\ftd2xx.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
+      <NativePlugins Include="$(LibDmdCostura64Root)\libSkiaSharp.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
+      <NativePlugins Include="$(LibDmdCostura64Root)\sockpp64.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
+      <NativePlugins Include="$(LibDmdCostura64Root)\sqlite3.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
+
+      <!-- Cleanup: managed assemblies (+ metas) left in the per-RID folders by the old layout. The
+           '*-*' glob matches only the RID folders (win-x64, linux-x64, osx-x64, osx-arm64), never
+           the hyphen-less 'Managed' folder, so the shared copies are preserved. -->
+      <StaleManagedInRid Include="$(UnityPluginsRoot)\*-*\LibDmd.Core*.dll*" />
+      <StaleManagedInRid Include="$(UnityPluginsRoot)\*-*\VisualPinball.Engine.DMD.dll*" />
+      <StaleManagedInRid Include="$(UnityPluginsRoot)\*-*\System.Reactive.dll*" />
+      <StaleManagedInRid Include="$(UnityPluginsRoot)\*-*\System.IO.Ports.dll*" />
+      <StaleManagedInRid Include="$(UnityPluginsRoot)\*-*\System.Runtime.CompilerServices.Unsafe.dll*" />
+      <StaleManagedInRid Include="$(UnityPluginsRoot)\*-*\System.Threading.Tasks.Extensions.dll*" />
+
+      <StaleNLogPlugins Include="$(UnityPluginsRoot)\**\NLog.dll" />
+      <StaleNLogPlugins Include="$(UnityPluginsRoot)\**\NLog.dll.meta" />
     </ItemGroup>
 
-    <Message Text="PluginsDeploy ($(RuntimeIdentifier)): @(Plugins)" Importance="High" />
-    <MakeDir Directories="$(UnityPluginsDir)" />
-    <Copy SourceFiles="@(Plugins)" DestinationFolder="$(UnityPluginsDir)" SkipUnchangedFiles="true" />
+    <Message Text="PluginsDeploy ($(RuntimeIdentifier)): managed -> Managed/, native -> $(RuntimeIdentifier)/" Importance="High" />
+    <MakeDir Directories="$(UnityManagedDir);$(UnityNativeDir)" />
+    <Copy SourceFiles="@(ManagedPlugins)" DestinationFolder="$(UnityManagedDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(NativePlugins)" DestinationFolder="$(UnityNativeDir)" SkipUnchangedFiles="true" />
+    <!-- The shim P/Invokes "libserialport"; deploy the native under that exact name. Windows uses a
+         renamed copy of the Costura libserialport64-0.dll. macOS already ships libserialport.dylib
+         (canonical) via the native staging; Linux needs a libserialport.so alias (TODO, see vendor). -->
+    <Copy Condition="'$(RuntimeIdentifier)' == 'win-x64'"
+          SourceFiles="$(LibDmdCostura64Root)\libserialport64-0.dll"
+          DestinationFiles="$(UnityNativeDir)\libserialport.dll" SkipUnchangedFiles="true" />
+    <Delete Files="@(StaleManagedInRid)" />
     <Delete Files="@(StaleNLogPlugins)" />
-    <Delete Files="@(StaleWindowsPlugins)" />
   </Target>
 </Project>

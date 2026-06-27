@@ -11,6 +11,8 @@ using LibDmd.Converter.Vni;
 using LibDmd.Input;
 using LibDmd.Output;
 using LibDmd.Output.Pin2Dmd;
+using LibDmd.Output.PinDmd1;
+using LibDmd.Output.PinDmd2;
 using LibDmd.Output.PinDmd3;
 using LibDmd.Output.Pixelcade;
 using LibDmd.Output.ZeDMD;
@@ -47,6 +49,8 @@ namespace VisualPinball.Engine.DMD.Unity
 		[SerializeField] private ColorMatrix _pixelcadeColorMatrix = ColorMatrix.Rgb;
 		[SerializeField] private bool _enablePin2Dmd;
 		[SerializeField] private int _pin2DmdOutputDelay = 25;
+		[SerializeField] private bool _enablePinDmd1;
+		[SerializeField] private bool _enablePinDmd2;
 
 		[Header("Native Window")]
 		[SerializeField] private bool _enableNativeWindow;
@@ -390,6 +394,34 @@ namespace VisualPinball.Engine.DMD.Unity
 				}
 			}
 
+			if (_settings.EnablePinDmd2) {
+				try {
+					var pinDmd2 = PinDmd2.GetInstance();
+					if (pinDmd2.IsAvailable) {
+						destinations.Add(pinDmd2);
+					} else {
+						Logger.Info("[DMD] PinDMDv2 destination not available.");
+						pinDmd2.Dispose();
+					}
+				} catch (Exception exception) {
+					Logger.Warn(exception, "[DMD] Could not initialize PinDMDv2 destination.");
+				}
+			}
+
+			if (_settings.EnablePinDmd1) {
+				try {
+					var pinDmd1 = PinDmd1.GetInstance();
+					if (pinDmd1.IsAvailable) {
+						destinations.Add(pinDmd1);
+					} else {
+						Logger.Info("[DMD] PinDMDv1 destination not available.");
+						pinDmd1.Dispose();
+					}
+				} catch (Exception exception) {
+					Logger.Warn(exception, "[DMD] Could not initialize PinDMDv1 destination.");
+				}
+			}
+
 			if (_settings.EnableNativeWindow) {
 				var nativeWindow = NativeWindowDestinationFactory.TryCreate(display, _settings);
 				if (nativeWindow != null) {
@@ -522,6 +554,8 @@ namespace VisualPinball.Engine.DMD.Unity
 				PixelcadeColorMatrix = _pixelcadeColorMatrix,
 				EnablePin2Dmd = _enablePin2Dmd,
 				Pin2DmdOutputDelay = _pin2DmdOutputDelay,
+				EnablePinDmd1 = _enablePinDmd1,
+				EnablePinDmd2 = _enablePinDmd2,
 				EnableNativeWindow = _enableNativeWindow,
 				EnableInSceneDisplay = _enableInSceneDisplay,
 				NativeWindowLeft = _nativeWindowLeft,
@@ -703,6 +737,8 @@ namespace VisualPinball.Engine.DMD.Unity
 		public ColorMatrix PixelcadeColorMatrix;
 		public bool EnablePin2Dmd;
 		public int Pin2DmdOutputDelay;
+		public bool EnablePinDmd1;
+		public bool EnablePinDmd2;
 		public bool EnableNativeWindow;
 		public bool EnableInSceneDisplay;
 		public int NativeWindowLeft;
@@ -747,6 +783,8 @@ namespace VisualPinball.Engine.DMD.Unity
 				&& PixelcadeColorMatrix == other.PixelcadeColorMatrix
 				&& EnablePin2Dmd == other.EnablePin2Dmd
 				&& Pin2DmdOutputDelay == other.Pin2DmdOutputDelay
+				&& EnablePinDmd1 == other.EnablePinDmd1
+				&& EnablePinDmd2 == other.EnablePinDmd2
 				&& EnableNativeWindow == other.EnableNativeWindow
 				&& EnableInSceneDisplay == other.EnableInSceneDisplay
 				&& NativeWindowLeft == other.NativeWindowLeft
@@ -787,6 +825,8 @@ namespace VisualPinball.Engine.DMD.Unity
 				&& PixelcadeColorMatrix == other.PixelcadeColorMatrix
 				&& EnablePin2Dmd == other.EnablePin2Dmd
 				&& Pin2DmdOutputDelay == other.Pin2DmdOutputDelay
+				&& EnablePinDmd1 == other.EnablePinDmd1
+				&& EnablePinDmd2 == other.EnablePinDmd2
 				&& EnableNativeWindow == other.EnableNativeWindow
 				&& EnableInSceneDisplay == other.EnableInSceneDisplay
 				&& EnableColorization == other.EnableColorization
@@ -820,6 +860,8 @@ namespace VisualPinball.Engine.DMD.Unity
 				ApplyPinDmd3(ini, settings);
 				ApplyPixelcade(ini, settings);
 				ApplyPin2Dmd(ini, settings);
+				ApplyPinDmd1(ini, settings);
+				ApplyPinDmd2(ini, settings);
 				ApplyGame(ini, settings, Path.GetDirectoryName(resolvedPath));
 				Logger.Info($"[DMD] Loaded DmdDevice.ini from \"{resolvedPath}\".");
 				return settings;
@@ -992,6 +1034,20 @@ namespace VisualPinball.Engine.DMD.Unity
 
 			settings.EnablePin2Dmd = GetBool(pin2Dmd, "enabled", settings.EnablePin2Dmd);
 			settings.Pin2DmdOutputDelay = GetInt(pin2Dmd, "outputdelay", settings.Pin2DmdOutputDelay);
+		}
+
+		private static void ApplyPinDmd1(Dictionary<string, Dictionary<string, string>> ini, DmdBridgeSettings settings)
+		{
+			if (ini.TryGetValue("pindmd1", out var pinDmd1)) {
+				settings.EnablePinDmd1 = GetBool(pinDmd1, "enabled", settings.EnablePinDmd1);
+			}
+		}
+
+		private static void ApplyPinDmd2(Dictionary<string, Dictionary<string, string>> ini, DmdBridgeSettings settings)
+		{
+			if (ini.TryGetValue("pindmd2", out var pinDmd2)) {
+				settings.EnablePinDmd2 = GetBool(pinDmd2, "enabled", settings.EnablePinDmd2);
+			}
 		}
 
 		private static void ApplyGame(Dictionary<string, Dictionary<string, string>> ini, DmdBridgeSettings settings, string configDirectory)
