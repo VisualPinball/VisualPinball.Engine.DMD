@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Reflection;
 using LibDmd;
 using LibDmd.Common;
 using LibDmd.Converter;
@@ -58,10 +57,6 @@ namespace VisualPinball.Engine.DMD.Unity
 		[SerializeField] private string _resolvedRomName;
 		[SerializeField] private string _resolvedConverter;
 
-		[Header("Diagnostics")]
-		[SerializeField] private string _lastInputFrame;
-		[SerializeField] private int _inputFrameCount;
-
 		[Header("Native Window Layout")]
 		[SerializeField] private int _nativeWindowLeft = 100;
 		[SerializeField] private int _nativeWindowTop = 100;
@@ -97,6 +92,9 @@ namespace VisualPinball.Engine.DMD.Unity
 		private float _suppressNativeWindowLayoutSyncUntil;
 		private bool _defaultAltColorPathResolved;
 		private string _defaultAltColorPath;
+		private float _nextSettingsCheckTime;
+
+		private const float SettingsCheckInterval = 0.25f;
 
 		private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
@@ -141,18 +139,29 @@ namespace VisualPinball.Engine.DMD.Unity
 
 		private void Update()
 		{
+			// Drives a host-pumped native window (macOS/SDL) on the main thread; no-op on the
+			// self-driven Windows backend. Must run every frame.
+			_pipeline?.PumpMainThread();
+
+			// Settings (component fields + DmdDevice.ini) change rarely; checking ~4x/sec keeps the
+			// per-frame INI File.Exists/GetLastWriteTime stat off the hot path.
+			if (Time.unscaledTime >= _nextSettingsCheckTime) {
+				_nextSettingsCheckTime = Time.unscaledTime + SettingsCheckInterval;
+				ApplySettingsChanges();
+			}
+
+			SyncNativeWindowLayout();
+		}
+
+		private void ApplySettingsChanges()
+		{
 			var currentSettings = LoadSettings();
 			var settingsChanged = _settings == null || !_settings.Equals(currentSettings);
 			if (settingsChanged) {
 				_settings = currentSettings;
 			}
 
-			if (_currentDisplay == null) {
-				return;
-			}
-
-			if (!settingsChanged) {
-				SyncNativeWindowLayout();
+			if (_currentDisplay == null || !settingsChanged) {
 				return;
 			}
 
@@ -160,12 +169,10 @@ namespace VisualPinball.Engine.DMD.Unity
 				_pipeline?.ApplySettings(_settings);
 				CaptureAppliedSettings();
 				_suppressNativeWindowLayoutSyncUntil = Time.unscaledTime + 0.35f;
-				SyncNativeWindowLayout();
 				return;
 			}
 
 			EnsurePipeline(_currentDisplay, force: true);
-			SyncNativeWindowLayout();
 		}
 
 		private void HandleDisplaysRequested(object sender, RequestedDisplays requestedDisplays)
@@ -210,32 +217,7 @@ namespace VisualPinball.Engine.DMD.Unity
 				}
 			}
 
-			TrackInputFrame(frame);
 			_pipeline.Push(frame);
-		}
-
-		private void TrackInputFrame(DisplayFrameData frame)
-		{
-			_inputFrameCount++;
-			if (_inputFrameCount % 60 != 1) {
-				return;
-			}
-
-			var nonZeroBytes = 0;
-			var max = 0;
-			if (frame.Data != null) {
-				foreach (var value in frame.Data) {
-					if (value != 0) {
-						nonZeroBytes++;
-					}
-					if (value > max) {
-						max = value;
-					}
-				}
-			}
-
-			_lastInputFrame = $"{frame.Format} {frame.Data?.Length ?? 0} byte(s), nonzero={nonZeroBytes}, max={max}";
-			Logger.Info($"[DMD] Input frame #{_inputFrameCount}: {_lastInputFrame}");
 		}
 
 		private bool IsTargetDisplay(string id)
@@ -542,93 +524,16 @@ namespace VisualPinball.Engine.DMD.Unity
 				return configuredRomName.Trim();
 			}
 
-			if (TryReadPinMameRomName(_gamelogicEngine, out var romName)) {
-				return romName;
-			}
-
-			if (_player == null) {
-				return configuredRomName;
-			}
-
-			foreach (var component in _player.GetComponentsInChildren<Component>(true)) {
-				if (TryReadPinMameRomName(component, out romName)) {
+			// The gamelogic engine advertises its ROM via IRomNameProvider (PinMAME implements it);
+			// no reflection or component scanning required.
+			if (_gamelogicEngine is IRomNameProvider romNameProvider) {
+				var romName = romNameProvider.RomName?.Trim();
+				if (!string.IsNullOrWhiteSpace(romName)) {
 					return romName;
 				}
 			}
 
 			return configuredRomName;
-		}
-
-		private static bool TryReadPinMameRomName(object instance, out string romName)
-		{
-			romName = null;
-			if (instance == null) {
-				return false;
-			}
-
-			var type = instance.GetType();
-			if (type.FullName == null || type.FullName.IndexOf("PinMame", StringComparison.OrdinalIgnoreCase) < 0) {
-				return false;
-			}
-
-			return TryReadStringField(instance, type, "romId", out romName)
-				|| TryReadStringProperty(instance, type, "RomId", out romName)
-				|| TryReadStringProperty(instance, type, "RomName", out romName)
-				|| TryReadGameRomName(instance, type, out romName);
-		}
-
-		private static bool TryReadGameRomName(object instance, Type type, out string romName)
-		{
-			romName = null;
-			var game = ReadProperty(instance, type, "Game");
-			if (game == null) {
-				return false;
-			}
-
-			var gameType = game.GetType();
-			return TryReadStringProperty(game, gameType, "RomId", out romName)
-				|| TryReadStringProperty(game, gameType, "RomName", out romName);
-		}
-
-		private static object ReadProperty(object instance, Type type, string name)
-		{
-			try {
-				return type.GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(instance);
-			} catch {
-				return null;
-			}
-		}
-
-		private static bool TryReadStringProperty(object instance, Type type, string name, out string value)
-		{
-			value = null;
-			try {
-				var property = type.GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-				if (property?.PropertyType != typeof(string)) {
-					return false;
-				}
-
-				value = (property.GetValue(instance) as string)?.Trim();
-				return !string.IsNullOrWhiteSpace(value);
-			} catch {
-				return false;
-			}
-		}
-
-		private static bool TryReadStringField(object instance, Type type, string name, out string value)
-		{
-			value = null;
-			try {
-				var field = type.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-				if (field?.FieldType != typeof(string)) {
-					return false;
-				}
-
-				value = (field.GetValue(instance) as string)?.Trim();
-				return !string.IsNullOrWhiteSpace(value);
-			} catch {
-				return false;
-			}
 		}
 
 		private string ResolveAltColorPath(string configuredAltColorPath)

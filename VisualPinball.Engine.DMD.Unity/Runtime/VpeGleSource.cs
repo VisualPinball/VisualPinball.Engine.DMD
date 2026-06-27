@@ -33,23 +33,31 @@ namespace VisualPinball.Engine.DMD.Unity
 			return new PassthroughVpeGleSource(display.Id, display.Width, display.Height);
 		}
 
-		public abstract void Push(DisplayFrameData frame);
+		/// <summary>
+		/// Pushes a frame from <paramref name="data"/> (the pipeline's reused worker buffer) into
+		/// the reactive graph. Called on the DMD worker thread; the graph runs synchronously here.
+		/// </summary>
+		public abstract void Push(DisplayFrameFormat format, byte[] data, int length);
 
-		protected DmdFrame CreateFrame(DisplayFrameData frame, int bitLength)
+		// A fresh buffer is allocated per frame on purpose: when a converter is active it retains the
+		// last frame for palette-rotation ticks (which fire on a separate scheduler thread), so the
+		// frame's backing array must not be the pipeline's reused worker buffer. This is the only
+		// remaining per-frame allocation on the DMD path; the hand-off and the in-scene pump reuse buffers.
+		protected DmdFrame CreateFrame(byte[] data, int length, int bitLength)
 		{
-			var data = new byte[frame.Data.Length];
-			Buffer.BlockCopy(frame.Data, 0, data, 0, data.Length);
-			return new DmdFrame(Dimensions, data, bitLength);
+			var copy = new byte[length];
+			Buffer.BlockCopy(data, 0, copy, 0, length);
+			return new DmdFrame(Dimensions, copy, bitLength);
 		}
 
-		protected DmdFrame CreateGray8Frame(DisplayFrameData frame, int maxValue)
+		protected DmdFrame CreateGray8Frame(byte[] data, int length, int maxValue)
 		{
-			var data = new byte[frame.Data.Length];
-			for (var i = 0; i < data.Length; i++) {
-				data[i] = (byte)(frame.Data[i] * 255 / maxValue);
+			var copy = new byte[length];
+			for (var i = 0; i < length; i++) {
+				copy[i] = (byte)(data[i] * 255 / maxValue);
 			}
 
-			return new DmdFrame(Dimensions, data, 8);
+			return new DmdFrame(Dimensions, copy, 8);
 		}
 
 		private sealed class PassthroughVpeGleSource : VpeGleSource, IGray2Source, IGray4Source, IGray8Source, IRgb24Source
@@ -63,22 +71,22 @@ namespace VisualPinball.Engine.DMD.Unity
 			{
 			}
 
-			public override void Push(DisplayFrameData frame)
+			public override void Push(DisplayFrameFormat format, byte[] data, int length)
 			{
-				switch (frame.Format) {
+				switch (format) {
 					case DisplayFrameFormat.Dmd2:
-						_gray2Frames.OnNext(CreateFrame(frame, 2));
-						_gray8Frames.OnNext(CreateGray8Frame(frame, 3));
+						_gray2Frames.OnNext(CreateFrame(data, length, 2));
+						_gray8Frames.OnNext(CreateGray8Frame(data, length, 3));
 						break;
 					case DisplayFrameFormat.Dmd4:
-						_gray4Frames.OnNext(CreateFrame(frame, 4));
-						_gray8Frames.OnNext(CreateGray8Frame(frame, 15));
+						_gray4Frames.OnNext(CreateFrame(data, length, 4));
+						_gray8Frames.OnNext(CreateGray8Frame(data, length, 15));
 						break;
 					case DisplayFrameFormat.Dmd8:
-						_gray8Frames.OnNext(CreateFrame(frame, 8));
+						_gray8Frames.OnNext(CreateFrame(data, length, 8));
 						break;
 					case DisplayFrameFormat.Dmd24:
-						_rgb24Frames.OnNext(CreateFrame(frame, 24));
+						_rgb24Frames.OnNext(CreateFrame(data, length, 24));
 						break;
 				}
 			}
@@ -101,14 +109,14 @@ namespace VisualPinball.Engine.DMD.Unity
 			{
 			}
 
-			public override void Push(DisplayFrameData frame)
+			public override void Push(DisplayFrameFormat format, byte[] data, int length)
 			{
-				switch (frame.Format) {
+				switch (format) {
 					case DisplayFrameFormat.Dmd2:
-						_gray2Frames.OnNext(CreateFrame(frame, 2));
+						_gray2Frames.OnNext(CreateFrame(data, length, 2));
 						break;
 					case DisplayFrameFormat.Dmd4:
-						_gray4Frames.OnNext(CreateFrame(frame, 4));
+						_gray4Frames.OnNext(CreateFrame(data, length, 4));
 						break;
 				}
 			}

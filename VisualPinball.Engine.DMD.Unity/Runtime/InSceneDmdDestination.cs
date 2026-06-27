@@ -16,7 +16,6 @@ namespace VisualPinball.Engine.DMD.Unity
 		private readonly InSceneDmdFramePump _framePump;
 		private readonly Dimensions _size;
 		private readonly bool _previousReceiveGamelogicFrames;
-		private int _renderFrameCount;
 		private bool _disposed;
 
 		private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
@@ -122,11 +121,6 @@ namespace VisualPinball.Engine.DMD.Unity
 				return;
 			}
 
-			_renderFrameCount++;
-			if (_renderFrameCount % 60 == 1) {
-				Logger.Info($"[DMD] In-scene render #{_renderFrameCount}: {format} {frame.Data.Length} byte(s).");
-			}
-
 			_framePump.Enqueue(format, frame.Data);
 		}
 
@@ -147,11 +141,16 @@ namespace VisualPinball.Engine.DMD.Unity
 
 			private DisplayComponent _display;
 			private DisplayFrameFormat _pendingFormat;
-			private byte[] _pendingFrame;
+
+			// Double buffer: the worker thread writes the latest frame into _back, the main thread
+			// swaps it into _front and applies it. The DMD size is fixed for the pump's lifetime, so
+			// these are allocated once and reused (no per-frame allocation on the in-scene hop).
+			private byte[] _back;
+			private byte[] _front;
+			private int _pendingLength;
 			private Color _pendingColor;
 			private bool _hasPendingFrame;
 			private bool _hasPendingColor;
-			private int _appliedFrameCount;
 
 			public void Initialize(DisplayComponent display)
 			{
@@ -164,12 +163,13 @@ namespace VisualPinball.Engine.DMD.Unity
 					return;
 				}
 
-				var copy = new byte[frame.Length];
-				Buffer.BlockCopy(frame, 0, copy, 0, frame.Length);
-
 				lock (_syncRoot) {
+					if (_back == null || _back.Length != frame.Length) {
+						_back = new byte[frame.Length];
+					}
+					Buffer.BlockCopy(frame, 0, _back, 0, frame.Length);
+					_pendingLength = frame.Length;
 					_pendingFormat = format;
-					_pendingFrame = copy;
 					_hasPendingFrame = true;
 				}
 			}
@@ -177,7 +177,6 @@ namespace VisualPinball.Engine.DMD.Unity
 			public void Clear()
 			{
 				lock (_syncRoot) {
-					_pendingFrame = null;
 					_hasPendingFrame = false;
 					_hasPendingColor = false;
 				}
@@ -194,7 +193,7 @@ namespace VisualPinball.Engine.DMD.Unity
 			private void Update()
 			{
 				DisplayFrameFormat format;
-				byte[] frame;
+				int length;
 				Color color;
 				bool hasColor;
 				bool hasFrame;
@@ -210,9 +209,14 @@ namespace VisualPinball.Engine.DMD.Unity
 
 					hasFrame = _hasPendingFrame;
 					format = _pendingFormat;
-					frame = _pendingFrame;
-					_pendingFrame = null;
+					length = _pendingLength;
 					_hasPendingFrame = false;
+
+					if (hasFrame) {
+						var swap = _front;
+						_front = _back;
+						_back = swap;
+					}
 				}
 
 				if (_display == null) {
@@ -223,16 +227,11 @@ namespace VisualPinball.Engine.DMD.Unity
 					_display.UpdateColor(color);
 				}
 
-				if (!hasFrame || frame == null) {
+				if (!hasFrame || _front == null || _front.Length != length) {
 					return;
 				}
 
-				_appliedFrameCount++;
-				if (_appliedFrameCount % 60 == 1) {
-					Logger.Info($"[DMD] In-scene apply #{_appliedFrameCount}: {format} {frame.Length} byte(s).");
-				}
-
-				_display.UpdateFrame(format, frame);
+				_display.UpdateFrame(format, _front);
 			}
 		}
 	}
