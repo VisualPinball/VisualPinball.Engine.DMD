@@ -42,16 +42,6 @@ namespace VisualPinball.Engine.DMD.Unity
 			return new DmdFrame(Dimensions, data, bitLength);
 		}
 
-		protected DmdFrame CreateGray4Frame(DisplayFrameData frame)
-		{
-			var data = new byte[frame.Data.Length];
-			for (var i = 0; i < data.Length; i++) {
-				data[i] = (byte)(frame.Data[i] >> 4);
-			}
-
-			return new DmdFrame(Dimensions, data, 4);
-		}
-
 		protected DmdFrame CreateGray8Frame(DisplayFrameData frame, int maxValue)
 		{
 			var data = new byte[frame.Data.Length];
@@ -119,9 +109,6 @@ namespace VisualPinball.Engine.DMD.Unity
 						break;
 					case DisplayFrameFormat.Dmd4:
 						_gray4Frames.OnNext(CreateFrame(frame, 4));
-						break;
-					case DisplayFrameFormat.Dmd8:
-						_gray4Frames.OnNext(CreateGray4Frame(frame));
 						break;
 				}
 			}

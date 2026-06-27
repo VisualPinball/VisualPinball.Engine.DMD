@@ -127,6 +127,8 @@ namespace VisualPinball.Engine.DMD.Unity
 
 		private void OnDestroy()
 		{
+			RequestSourceFrameFormat(DisplayFrameFormat.Dmd8);
+
 			if (_gamelogicEngine != null) {
 				_gamelogicEngine.OnDisplaysRequested -= HandleDisplaysRequested;
 				_gamelogicEngine.OnDisplayClear -= HandleDisplayClear;
@@ -310,8 +312,16 @@ namespace VisualPinball.Engine.DMD.Unity
 
 			var converter = CreateConverter();
 			_resolvedConverter = converter?.Name ?? "none";
+			RequestSourceFrameFormat(converter != null ? DisplayFrameFormat.Dmd4 : DisplayFrameFormat.Dmd8);
 			_pipeline = new DmdPipeline(display, destinations, converter, _settings.FlipHorizontally);
 			Logger.Info($"[DMD] Pipeline for \"{display.Id}\" created with {destinations.Count} destination(s).");
+		}
+
+		private void RequestSourceFrameFormat(DisplayFrameFormat format)
+		{
+			if (_gamelogicEngine is IDisplayFrameFormatPreference frameFormatPreference) {
+				frameFormatPreference.RequestDisplayFrameFormat(_settings?.TargetDisplayId ?? _targetDisplayId, format);
+			}
 		}
 
 		private bool PipelineSettingsChanged()

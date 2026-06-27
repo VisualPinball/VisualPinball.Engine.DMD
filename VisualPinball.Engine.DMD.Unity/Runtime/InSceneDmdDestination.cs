@@ -13,6 +13,7 @@ namespace VisualPinball.Engine.DMD.Unity
 	internal sealed class InSceneDmdDestination : IGray2Destination, IGray4Destination, IGray8Destination, IRgb24Destination, IRgb565Destination, IFixedSizeDestination
 	{
 		private readonly DisplayComponent _display;
+		private readonly InSceneDmdFramePump _framePump;
 		private readonly Dimensions _size;
 		private readonly bool _previousReceiveGamelogicFrames;
 		private int _renderFrameCount;
@@ -23,6 +24,8 @@ namespace VisualPinball.Engine.DMD.Unity
 		private InSceneDmdDestination(DisplayComponent display, DisplayConfig config)
 		{
 			_display = display;
+			_framePump = display.GetComponent<InSceneDmdFramePump>() ?? display.gameObject.AddComponent<InSceneDmdFramePump>();
+			_framePump.Initialize(display);
 			_size = new Dimensions(config.Width, config.Height);
 			_previousReceiveGamelogicFrames = display.ReceiveGamelogicFrames;
 			_display.ReceiveGamelogicFrames = false;
@@ -101,7 +104,7 @@ namespace VisualPinball.Engine.DMD.Unity
 
 		public void ClearDisplay()
 		{
-			_display.Clear();
+			_framePump.Enqueue(DisplayFrameFormat.Dmd2, new byte[_size.Surface]);
 		}
 
 		public void Dispose()
@@ -109,6 +112,7 @@ namespace VisualPinball.Engine.DMD.Unity
 			if (_display != null) {
 				_display.ReceiveGamelogicFrames = _previousReceiveGamelogicFrames;
 			}
+			_framePump.Clear();
 			_disposed = true;
 		}
 
@@ -123,7 +127,7 @@ namespace VisualPinball.Engine.DMD.Unity
 				Logger.Info($"[DMD] In-scene render #{_renderFrameCount}: {format} {frame.Data.Length} byte(s).");
 			}
 
-			_display.UpdateFrame(format, frame.Data);
+			_framePump.Enqueue(format, frame.Data);
 		}
 
 		private static DisplayComponent FindDisplay(string id)
@@ -135,6 +139,74 @@ namespace VisualPinball.Engine.DMD.Unity
 			}
 
 			return null;
+		}
+
+		private sealed class InSceneDmdFramePump : MonoBehaviour
+		{
+			private readonly object _syncRoot = new object();
+
+			private DisplayComponent _display;
+			private DisplayFrameFormat _pendingFormat;
+			private byte[] _pendingFrame;
+			private bool _hasPendingFrame;
+			private int _appliedFrameCount;
+
+			public void Initialize(DisplayComponent display)
+			{
+				_display = display;
+			}
+
+			public void Enqueue(DisplayFrameFormat format, byte[] frame)
+			{
+				if (frame == null) {
+					return;
+				}
+
+				var copy = new byte[frame.Length];
+				Buffer.BlockCopy(frame, 0, copy, 0, frame.Length);
+
+				lock (_syncRoot) {
+					_pendingFormat = format;
+					_pendingFrame = copy;
+					_hasPendingFrame = true;
+				}
+			}
+
+			public void Clear()
+			{
+				lock (_syncRoot) {
+					_pendingFrame = null;
+					_hasPendingFrame = false;
+				}
+			}
+
+			private void Update()
+			{
+				DisplayFrameFormat format;
+				byte[] frame;
+
+				lock (_syncRoot) {
+					if (!_hasPendingFrame) {
+						return;
+					}
+
+					format = _pendingFormat;
+					frame = _pendingFrame;
+					_pendingFrame = null;
+					_hasPendingFrame = false;
+				}
+
+				if (_display == null || frame == null) {
+					return;
+				}
+
+				_appliedFrameCount++;
+				if (_appliedFrameCount % 60 == 1) {
+					Logger.Info($"[DMD] In-scene apply #{_appliedFrameCount}: {format} {frame.Length} byte(s).");
+				}
+
+				_display.UpdateFrame(format, frame);
+			}
 		}
 	}
 }
