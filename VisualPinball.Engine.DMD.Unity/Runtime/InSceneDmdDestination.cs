@@ -84,7 +84,7 @@ namespace VisualPinball.Engine.DMD.Unity
 
 		public void SetColor(DmdColor color)
 		{
-			_display.UpdateColor(new Color(color.R / 255f, color.G / 255f, color.B / 255f));
+			_framePump.EnqueueColor(new Color(color.R / 255f, color.G / 255f, color.B / 255f));
 		}
 
 		public void SetPalette(DmdColor[] colors)
@@ -148,7 +148,9 @@ namespace VisualPinball.Engine.DMD.Unity
 			private DisplayComponent _display;
 			private DisplayFrameFormat _pendingFormat;
 			private byte[] _pendingFrame;
+			private Color _pendingColor;
 			private bool _hasPendingFrame;
+			private bool _hasPendingColor;
 			private int _appliedFrameCount;
 
 			public void Initialize(DisplayComponent display)
@@ -177,6 +179,15 @@ namespace VisualPinball.Engine.DMD.Unity
 				lock (_syncRoot) {
 					_pendingFrame = null;
 					_hasPendingFrame = false;
+					_hasPendingColor = false;
+				}
+			}
+
+			public void EnqueueColor(Color color)
+			{
+				lock (_syncRoot) {
+					_pendingColor = color;
+					_hasPendingColor = true;
 				}
 			}
 
@@ -184,19 +195,35 @@ namespace VisualPinball.Engine.DMD.Unity
 			{
 				DisplayFrameFormat format;
 				byte[] frame;
+				Color color;
+				bool hasColor;
+				bool hasFrame;
 
 				lock (_syncRoot) {
-					if (!_hasPendingFrame) {
+					if (!_hasPendingFrame && !_hasPendingColor) {
 						return;
 					}
 
+					hasColor = _hasPendingColor;
+					color = _pendingColor;
+					_hasPendingColor = false;
+
+					hasFrame = _hasPendingFrame;
 					format = _pendingFormat;
 					frame = _pendingFrame;
 					_pendingFrame = null;
 					_hasPendingFrame = false;
 				}
 
-				if (_display == null || frame == null) {
+				if (_display == null) {
+					return;
+				}
+
+				if (hasColor) {
+					_display.UpdateColor(color);
+				}
+
+				if (!hasFrame || frame == null) {
 					return;
 				}
 
