@@ -12,9 +12,9 @@ namespace VisualPinball.Engine.DMD.Unity
 
 		public static IDestination TryCreate(DisplayConfig display)
 		{
-			var destinationType = Type.GetType("LibDmd.Output.NativeWindow.NativeWindowDestination, LibDmd.Core");
+			var destinationType = Type.GetType("LibDmd.Output.NativeWindow.NativeWindowDestination, LibDmd.Core.Windows");
 			if (destinationType == null) {
-				Logger.Warn("[DMD] Native-window backend type was not found in LibDmd.Core.");
+				Logger.Warn("[DMD] Native-window backend type was not found in LibDmd.Core.Windows.");
 				return null;
 			}
 

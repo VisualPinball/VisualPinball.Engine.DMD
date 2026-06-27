@@ -9,6 +9,7 @@
     <RuntimeIdentifiers>win-x64;linux-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
     <LibDmdExtensionsRoot Condition="'$(LibDmdExtensionsRoot)' == ''">C:\Development\dmd-extensions</LibDmdExtensionsRoot>
     <LibDmdCoreProject>$(LibDmdExtensionsRoot)\LibDmd.Core\LibDmd.Core.csproj</LibDmdCoreProject>
+    <LibDmdCoreWindowsProject>$(LibDmdExtensionsRoot)\LibDmd.Core.Windows\LibDmd.Core.Windows.csproj</LibDmdCoreWindowsProject>
     <LibDmdNativeRoot>$(LibDmdExtensionsRoot)\native\nuget\runtimes</LibDmdNativeRoot>
   </PropertyGroup>
 
@@ -22,6 +23,9 @@
   <ItemGroup>
     <ProjectReference Include="$(LibDmdCoreProject)" />
   </ItemGroup>
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+    <ProjectReference Include="$(LibDmdCoreWindowsProject)" />
+  </ItemGroup>
 
   <Target Name="PluginsDeploy" AfterTargets="AfterBuild">
     <PropertyGroup>
@@ -33,11 +37,15 @@
       <Plugins Include="$(LibDmdNativeRoot)\$(RuntimeIdentifier)\native\*" />
       <StaleNLogPlugins Include="..\VisualPinball.Engine.DMD.Unity\Plugins\**\NLog.dll" />
       <StaleNLogPlugins Include="..\VisualPinball.Engine.DMD.Unity\Plugins\**\NLog.dll.meta" />
+      <StaleWindowsPlugins Include="..\VisualPinball.Engine.DMD.Unity\Plugins\linux-x64\LibDmd.Core.Windows.dll" />
+      <StaleWindowsPlugins Include="..\VisualPinball.Engine.DMD.Unity\Plugins\osx-x64\LibDmd.Core.Windows.dll" />
+      <StaleWindowsPlugins Include="..\VisualPinball.Engine.DMD.Unity\Plugins\osx-arm64\LibDmd.Core.Windows.dll" />
     </ItemGroup>
 
     <Message Text="PluginsDeploy ($(RuntimeIdentifier)): @(Plugins)" Importance="High" />
     <MakeDir Directories="$(UnityPluginsDir)" />
     <Copy SourceFiles="@(Plugins)" DestinationFolder="$(UnityPluginsDir)" SkipUnchangedFiles="true" />
     <Delete Files="@(StaleNLogPlugins)" />
+    <Delete Files="@(StaleWindowsPlugins)" />
   </Target>
 </Project>
