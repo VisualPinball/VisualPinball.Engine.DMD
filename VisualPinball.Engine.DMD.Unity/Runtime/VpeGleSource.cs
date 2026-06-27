@@ -4,9 +4,7 @@ using System.Reactive.Linq;
 using System.Reactive.Subjects;
 using LibDmd.Frame;
 using LibDmd.Input;
-using NLog;
 using VisualPinball.Unity;
-using Logger = NLog.Logger;
 
 namespace VisualPinball.Engine.DMD.Unity
 {
@@ -21,10 +19,6 @@ namespace VisualPinball.Engine.DMD.Unity
 		private readonly Subject<Unit> _onPause = new Subject<Unit>();
 		private readonly Subject<DmdFrame> _gray8Frames = new Subject<DmdFrame>();
 		private readonly Subject<DmdFrame> _rgb24Frames = new Subject<DmdFrame>();
-		private bool _firstNonEmptyFrameLogged;
-		private bool _firstEmptyFrameLogged;
-
-		private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
 		public VpeGleSource(string displayId, int width, int height)
 		{
@@ -58,7 +52,6 @@ namespace VisualPinball.Engine.DMD.Unity
 		{
 			var data = new byte[frame.Data.Length];
 			Buffer.BlockCopy(frame.Data, 0, data, 0, data.Length);
-			LogFrame(frame, data, bitLength);
 			return new DmdFrame(_dimensions, data, bitLength);
 		}
 
@@ -69,26 +62,7 @@ namespace VisualPinball.Engine.DMD.Unity
 				data[i] = (byte)(frame.Data[i] * 255 / maxValue);
 			}
 
-			LogFrame(frame, data, 8);
 			return new DmdFrame(_dimensions, data, 8);
-		}
-
-		private void LogFrame(DisplayFrameData frame, byte[] data, int bitLength)
-		{
-			var max = 0;
-			for (var i = 0; i < data.Length; i++) {
-				if (data[i] > max) {
-					max = data[i];
-				}
-			}
-
-			if (max > 0 && !_firstNonEmptyFrameLogged) {
-				Logger.Info($"[DMD] First non-empty frame for \"{frame.Id}\": format={frame.Format}, bitLength={bitLength}, bytes={data.Length}, max={max}.");
-				_firstNonEmptyFrameLogged = true;
-			} else if (max == 0 && !_firstEmptyFrameLogged) {
-				Logger.Info($"[DMD] First empty frame for \"{frame.Id}\": format={frame.Format}, bitLength={bitLength}, bytes={data.Length}.");
-				_firstEmptyFrameLogged = true;
-			}
 		}
 	}
 }

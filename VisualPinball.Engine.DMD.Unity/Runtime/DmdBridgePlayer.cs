@@ -45,6 +45,11 @@ namespace VisualPinball.Engine.DMD.Unity
 		private bool _appliedEnableZeDmd;
 		private bool _appliedEnableNativeWindow;
 		private bool _appliedEnableSerum;
+		private string _appliedZeDmdPort;
+		private int _appliedZeDmdBrightness;
+		private bool _appliedZeDmdDebug;
+		private string _appliedAltColorPath;
+		private string _appliedRomName;
 		private bool _missingDisplayWarningLogged;
 		private bool _nativeWindowWarningLogged;
 
@@ -92,9 +97,7 @@ namespace VisualPinball.Engine.DMD.Unity
 				return;
 			}
 
-			if (_appliedEnableZeDmd == _enableZeDmd
-				&& _appliedEnableNativeWindow == _enableNativeWindow
-				&& _appliedEnableSerum == _enableSerum) {
+			if (!PipelineSettingsChanged()) {
 				return;
 			}
 
@@ -209,9 +212,7 @@ namespace VisualPinball.Engine.DMD.Unity
 			}
 
 			_pipeline?.Dispose();
-			_appliedEnableZeDmd = _enableZeDmd;
-			_appliedEnableNativeWindow = _enableNativeWindow;
-			_appliedEnableSerum = _enableSerum;
+			CaptureAppliedSettings();
 			var destinations = CreateDestinations(display);
 			if (destinations.Count == 0) {
 				Logger.Warn("[DMD] No DMD destinations are available; bridge will ignore frames.");
@@ -221,6 +222,30 @@ namespace VisualPinball.Engine.DMD.Unity
 
 			_pipeline = new DmdPipeline(display, destinations, CreateConverter());
 			Logger.Info($"[DMD] Pipeline for \"{display.Id}\" created with {destinations.Count} destination(s).");
+		}
+
+		private bool PipelineSettingsChanged()
+		{
+			return _appliedEnableZeDmd != _enableZeDmd
+				|| _appliedEnableNativeWindow != _enableNativeWindow
+				|| _appliedEnableSerum != _enableSerum
+				|| _appliedZeDmdPort != _zeDmdPort
+				|| _appliedZeDmdBrightness != _zeDmdBrightness
+				|| _appliedZeDmdDebug != _zeDmdDebug
+				|| _appliedAltColorPath != _altColorPath
+				|| _appliedRomName != _romName;
+		}
+
+		private void CaptureAppliedSettings()
+		{
+			_appliedEnableZeDmd = _enableZeDmd;
+			_appliedEnableNativeWindow = _enableNativeWindow;
+			_appliedEnableSerum = _enableSerum;
+			_appliedZeDmdPort = _zeDmdPort;
+			_appliedZeDmdBrightness = _zeDmdBrightness;
+			_appliedZeDmdDebug = _zeDmdDebug;
+			_appliedAltColorPath = _altColorPath;
+			_appliedRomName = _romName;
 		}
 
 		private List<IDestination> CreateDestinations(DisplayConfig display)
