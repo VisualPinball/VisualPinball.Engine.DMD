@@ -11,19 +11,21 @@ namespace VisualPinball.Engine.DMD.Unity
 	{
 		private readonly DisplayConfig _display;
 		private readonly VpeGleSource _source;
+		private readonly List<IDestination> _destinations;
 		private readonly RenderGraph _renderGraph;
 		private readonly IDisposable _renderer;
 
-		public DmdPipeline(DisplayConfig display, List<IDestination> destinations, AbstractConverter converter)
+		public DmdPipeline(DisplayConfig display, List<IDestination> destinations, AbstractConverter converter, bool flipHorizontally)
 		{
 			_display = display;
+			_destinations = destinations;
 			_source = new VpeGleSource(display.Id, display.Width, display.Height);
 			_renderGraph = new RenderGraph(new UndisposedReferences(), runOnMainThread: true) {
 				Name = $"VPE DMD ({display.Id})",
 				Source = _source,
 				Destinations = destinations,
 				Converter = converter,
-				FlipHorizontally = display.FlipX,
+				FlipHorizontally = display.FlipX ^ flipHorizontally,
 			};
 			_renderer = _renderGraph.Init().StartRendering(null);
 		}
@@ -44,6 +46,30 @@ namespace VisualPinball.Engine.DMD.Unity
 		public void Clear()
 		{
 			_renderGraph.ClearDisplay();
+		}
+
+		public void ApplySettings(DmdBridgeSettings settings)
+		{
+			foreach (var destination in _destinations) {
+				NativeWindowDestinationFactory.TryConfigure(destination, settings);
+			}
+		}
+
+		public bool TryReadNativeWindowLayout(out int left, out int top, out int width, out int height, out bool stayOnTop, out bool isMovingOrSizing)
+		{
+			foreach (var destination in _destinations) {
+				if (NativeWindowDestinationFactory.TryReadLayout(destination, out left, out top, out width, out height, out stayOnTop, out isMovingOrSizing)) {
+					return true;
+				}
+			}
+
+			left = 0;
+			top = 0;
+			width = 0;
+			height = 0;
+			stayOnTop = false;
+			isMovingOrSizing = false;
+			return false;
 		}
 
 		public void Dispose()
