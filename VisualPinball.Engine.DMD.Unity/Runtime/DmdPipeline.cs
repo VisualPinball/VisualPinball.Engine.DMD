@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using LibDmd;
 using LibDmd.Converter;
 using LibDmd.Output;
+using NLog;
 using VisualPinball.Unity;
+using Logger = NLog.Logger;
 
 namespace VisualPinball.Engine.DMD.Unity
 {
@@ -14,12 +16,13 @@ namespace VisualPinball.Engine.DMD.Unity
 		private readonly List<IDestination> _destinations;
 		private readonly RenderGraph _renderGraph;
 		private readonly IDisposable _renderer;
+		private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
 		public DmdPipeline(DisplayConfig display, List<IDestination> destinations, AbstractConverter converter, bool flipHorizontally)
 		{
 			_display = display;
 			_destinations = destinations;
-			_source = new VpeGleSource(display.Id, display.Width, display.Height);
+			_source = VpeGleSource.Create(display, converter != null);
 			_renderGraph = new RenderGraph(new UndisposedReferences(), runOnMainThread: true) {
 				Name = $"VPE DMD ({display.Id})",
 				Source = _source,
@@ -27,7 +30,7 @@ namespace VisualPinball.Engine.DMD.Unity
 				Converter = converter,
 				FlipHorizontally = display.FlipX ^ flipHorizontally,
 			};
-			_renderer = _renderGraph.Init().StartRendering(null);
+			_renderer = _renderGraph.Init().StartRendering(null, exception => Logger.Warn(exception, "[DMD] RenderGraph reported an error."));
 		}
 
 		public bool Matches(DisplayConfig display)

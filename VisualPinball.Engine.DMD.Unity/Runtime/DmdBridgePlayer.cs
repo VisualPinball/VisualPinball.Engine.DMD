@@ -3,15 +3,18 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
 using LibDmd;
 using LibDmd.Common;
 using LibDmd.Converter;
 using LibDmd.Converter.Serum;
+using LibDmd.Converter.Vni;
 using LibDmd.Input;
 using LibDmd.Output;
 using LibDmd.Output.ZeDMD;
 using NLog;
 using UnityEngine;
+using UnityEngine.Serialization;
 using VisualPinball.Unity;
 using Logger = NLog.Logger;
 
@@ -27,7 +30,6 @@ namespace VisualPinball.Engine.DMD.Unity
 		[SerializeField] private string _targetDisplayId = "dmd0";
 
 		[Header("Config")]
-		[SerializeField] private bool _useDmdDeviceIni;
 		[SerializeField] private string _dmdDeviceIniPath = "DmdDevice.ini";
 		[SerializeField] private bool _reloadIniOnChange = true;
 
@@ -40,10 +42,25 @@ namespace VisualPinball.Engine.DMD.Unity
 		[Header("Native Window")]
 		[SerializeField] private bool _enableNativeWindow;
 
+		[Header("In-Scene Display")]
+		[SerializeField] private bool _enableInSceneDisplay = true;
+
 		[Header("Colorization")]
-		[SerializeField] private bool _enableSerum;
+		[FormerlySerializedAs("_enableSerum")]
+		[SerializeField] private bool _enableColorization;
 		[SerializeField] private string _altColorPath;
 		[SerializeField] private string _romName;
+		[SerializeField] private ScalerMode _colorizationScalerMode = ScalerMode.None;
+		[SerializeField] private string _vniKey;
+
+		[Header("Resolved Colorization")]
+		[SerializeField] private string _resolvedAltColorPath;
+		[SerializeField] private string _resolvedRomName;
+		[SerializeField] private string _resolvedConverter;
+
+		[Header("Diagnostics")]
+		[SerializeField] private string _lastInputFrame;
+		[SerializeField] private int _inputFrameCount;
 
 		[Header("Native Window Layout")]
 		[SerializeField] private int _nativeWindowLeft = 100;
@@ -78,6 +95,8 @@ namespace VisualPinball.Engine.DMD.Unity
 		private bool _missingConfigWarningLogged;
 		private float _nextNativeWindowLayoutSyncTime;
 		private float _suppressNativeWindowLayoutSyncUntil;
+		private bool _defaultAltColorPathResolved;
+		private string _defaultAltColorPath;
 
 		private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
@@ -189,7 +208,32 @@ namespace VisualPinball.Engine.DMD.Unity
 				}
 			}
 
+			TrackInputFrame(frame);
 			_pipeline.Push(frame);
+		}
+
+		private void TrackInputFrame(DisplayFrameData frame)
+		{
+			_inputFrameCount++;
+			if (_inputFrameCount % 60 != 1) {
+				return;
+			}
+
+			var nonZeroBytes = 0;
+			var max = 0;
+			if (frame.Data != null) {
+				foreach (var value in frame.Data) {
+					if (value != 0) {
+						nonZeroBytes++;
+					}
+					if (value > max) {
+						max = value;
+					}
+				}
+			}
+
+			_lastInputFrame = $"{frame.Format} {frame.Data?.Length ?? 0} byte(s), nonzero={nonZeroBytes}, max={max}";
+			Logger.Info($"[DMD] Input frame #{_inputFrameCount}: {_lastInputFrame}");
 		}
 
 		private bool IsTargetDisplay(string id)
@@ -264,7 +308,9 @@ namespace VisualPinball.Engine.DMD.Unity
 				return;
 			}
 
-			_pipeline = new DmdPipeline(display, destinations, CreateConverter(), _settings.FlipHorizontally);
+			var converter = CreateConverter();
+			_resolvedConverter = converter?.Name ?? "none";
+			_pipeline = new DmdPipeline(display, destinations, converter, _settings.FlipHorizontally);
 			Logger.Info($"[DMD] Pipeline for \"{display.Id}\" created with {destinations.Count} destination(s).");
 		}
 
@@ -306,33 +352,115 @@ namespace VisualPinball.Engine.DMD.Unity
 				}
 			}
 
+			if (_settings.EnableInSceneDisplay) {
+				var inSceneDisplay = InSceneDmdDestination.TryCreate(display);
+				if (inSceneDisplay != null) {
+					destinations.Add(inSceneDisplay);
+				}
+			}
+
 			return destinations;
 		}
 
 		private AbstractConverter CreateConverter()
 		{
-			if (!_settings.EnableSerum || string.IsNullOrWhiteSpace(_settings.AltColorPath) || string.IsNullOrWhiteSpace(_settings.RomName)) {
+			if (!_settings.EnableColorization) {
+				Logger.Info("[DMD] Colorization disabled.");
 				return null;
 			}
 
+			if (string.IsNullOrWhiteSpace(_settings.AltColorPath) || string.IsNullOrWhiteSpace(_settings.RomName)) {
+				Logger.Info($"[DMD] Colorization enabled, but missing altcolor path or ROM name. AltColorPath=\"{_settings.AltColorPath}\", RomName=\"{_settings.RomName}\".");
+				return null;
+			}
+
+			LogColorizationSearchPath(_settings.AltColorPath, _settings.RomName);
+
+			if (HasSerumColorization(_settings.AltColorPath, _settings.RomName)) {
+				try {
+					var serum = new Serum(_settings.AltColorPath, _settings.RomName, _settings.ColorizationScalerMode);
+					if (serum.IsLoaded) {
+						Logger.Info($"[DMD] Serum colorization loaded ({serum.ColorizationVersion}).");
+						return serum;
+					}
+
+					serum.Dispose();
+					Logger.Info($"[DMD] Serum files were found for \"{_settings.RomName}\", but no Serum colorization was loaded.");
+				} catch (Exception exception) {
+					Logger.Warn(exception, "[DMD] Could not initialize Serum colorization.");
+				}
+			} else {
+				Logger.Info($"[DMD] No Serum files found for \"{_settings.RomName}\".");
+			}
+
 			try {
-				var serum = new Serum(_settings.AltColorPath, _settings.RomName, ScalerMode.None);
-				if (serum.IsLoaded) {
-					Logger.Info($"[DMD] Serum colorization loaded ({serum.ColorizationVersion}).");
-					return serum;
+				var loader = new VniLoader(_settings.AltColorPath, _settings.RomName);
+				if (!loader.FilesExist) {
+					Logger.Info($"[DMD] Colorization was requested, but no Serum/VNI/PAL/PAC files were found for \"{_settings.RomName}\".");
+					return null;
 				}
 
-				serum.Dispose();
-				Logger.Info("[DMD] Serum colorization was requested, but no colorization was loaded.");
-				return null;
+				loader.Load(string.IsNullOrWhiteSpace(_settings.VniKey) ? null : _settings.VniKey);
+				if (loader.Pal == null) {
+					Logger.Info($"[DMD] VNI/PAL/PAC colorization was found for \"{_settings.RomName}\" but no palette was loaded.");
+					return null;
+				}
+
+				Logger.Info($"[DMD] VNI/PAL/PAC colorization loaded for \"{_settings.RomName}\".");
+				return new VniColorizer(loader.Pal, loader.Vni) {
+					ScalerMode = _settings.ColorizationScalerMode
+				};
 			} catch (Exception exception) {
-				Logger.Warn(exception, "[DMD] Could not initialize Serum colorization.");
+				Logger.Warn(exception, "[DMD] Could not initialize VNI/PAL/PAC colorization.");
 				return null;
+			}
+		}
+
+		private static bool HasSerumColorization(string altColorPath, string romName)
+		{
+			var gamePath = Path.Combine(altColorPath, romName);
+			if (!Directory.Exists(gamePath)) {
+				return false;
+			}
+
+			var altColorDir = new DirectoryInfo(gamePath);
+			return PathUtil.GetLastCreatedFile(altColorDir, "cRZ") != null
+				|| PathUtil.GetLastCreatedFile(altColorDir, "cROM") != null
+				|| PathUtil.GetLastCreatedFile(altColorDir, "cROMc") != null;
+		}
+
+		private static void LogColorizationSearchPath(string altColorPath, string romName)
+		{
+			var gamePath = Path.Combine(altColorPath, romName);
+			if (!Directory.Exists(gamePath)) {
+				Logger.Info($"[DMD] Colorization folder not found: \"{gamePath}\".");
+				return;
+			}
+
+			try {
+				var files = Directory.GetFiles(gamePath);
+				Logger.Info($"[DMD] Looking for colorization in \"{gamePath}\" ({files.Length} file(s)).");
+				foreach (var file in files) {
+					var extension = Path.GetExtension(file);
+					if (string.Equals(extension, ".crz", StringComparison.OrdinalIgnoreCase)
+						|| string.Equals(extension, ".crom", StringComparison.OrdinalIgnoreCase)
+						|| string.Equals(extension, ".cromc", StringComparison.OrdinalIgnoreCase)
+						|| string.Equals(extension, ".pal", StringComparison.OrdinalIgnoreCase)
+						|| string.Equals(extension, ".vni", StringComparison.OrdinalIgnoreCase)
+						|| string.Equals(extension, ".pac", StringComparison.OrdinalIgnoreCase)) {
+						Logger.Info($"[DMD] Colorization candidate: {Path.GetFileName(file)}");
+					}
+				}
+			} catch (Exception exception) {
+				Logger.Warn(exception, $"[DMD] Could not inspect colorization folder \"{gamePath}\".");
 			}
 		}
 
 		private DmdBridgeSettings LoadSettings()
 		{
+			_resolvedAltColorPath = ResolveAltColorPath(_altColorPath);
+			_resolvedRomName = ResolveRomName(_romName);
+
 			var fallback = new DmdBridgeSettings {
 				TargetDisplayId = _targetDisplayId,
 				EnableZeDmd = _enableZeDmd,
@@ -340,6 +468,7 @@ namespace VisualPinball.Engine.DMD.Unity
 				ZeDmdBrightness = _zeDmdBrightness,
 				ZeDmdDebug = _zeDmdDebug,
 				EnableNativeWindow = _enableNativeWindow,
+				EnableInSceneDisplay = _enableInSceneDisplay,
 				NativeWindowLeft = _nativeWindowLeft,
 				NativeWindowTop = _nativeWindowTop,
 				NativeWindowWidth = _nativeWindowWidth,
@@ -355,21 +484,19 @@ namespace VisualPinball.Engine.DMD.Unity
 				Gamma = _gamma,
 				GlassColor = _glassColor,
 				GlassLighting = _glassLighting,
-				EnableSerum = _enableSerum,
-				AltColorPath = _altColorPath,
-				RomName = _romName,
+				EnableColorization = _enableColorization,
+				AltColorPath = _resolvedAltColorPath,
+				RomName = _resolvedRomName,
+				ColorizationScalerMode = _colorizationScalerMode,
+				VniKey = _vniKey,
 				FlipHorizontally = false,
 			};
-
-			if (!_useDmdDeviceIni) {
-				return fallback;
-			}
 
 			var configPath = DmdBridgeConfig.ResolveConfigPath(_dmdDeviceIniPath);
 			var writeTimeUtc = File.Exists(configPath) ? File.GetLastWriteTimeUtc(configPath) : DateTime.MinValue;
 			if (!File.Exists(configPath)) {
-				if (!_missingConfigWarningLogged) {
-					Logger.Warn($"[DMD] No DmdDevice.ini found at \"{configPath}\"; using component settings.");
+				if (!_missingConfigWarningLogged && !DmdBridgeConfig.IsDefaultConfigPath(_dmdDeviceIniPath)) {
+					Logger.Info($"[DMD] No DmdDevice.ini found at \"{configPath}\"; using component settings.");
 					_missingConfigWarningLogged = true;
 				}
 				_lastFallbackSettings = fallback.Clone();
@@ -397,6 +524,126 @@ namespace VisualPinball.Engine.DMD.Unity
 			}
 			_lastFallbackSettings = fallback.Clone();
 			return settings;
+		}
+
+		private string ResolveRomName(string configuredRomName)
+		{
+			if (!string.IsNullOrWhiteSpace(configuredRomName)) {
+				return configuredRomName.Trim();
+			}
+
+			if (TryReadPinMameRomName(_gamelogicEngine, out var romName)) {
+				return romName;
+			}
+
+			if (_player == null) {
+				return configuredRomName;
+			}
+
+			foreach (var component in _player.GetComponentsInChildren<Component>(true)) {
+				if (TryReadPinMameRomName(component, out romName)) {
+					return romName;
+				}
+			}
+
+			return configuredRomName;
+		}
+
+		private static bool TryReadPinMameRomName(object instance, out string romName)
+		{
+			romName = null;
+			if (instance == null) {
+				return false;
+			}
+
+			var type = instance.GetType();
+			if (type.FullName == null || type.FullName.IndexOf("PinMame", StringComparison.OrdinalIgnoreCase) < 0) {
+				return false;
+			}
+
+			return TryReadStringField(instance, type, "romId", out romName)
+				|| TryReadStringProperty(instance, type, "RomId", out romName)
+				|| TryReadStringProperty(instance, type, "RomName", out romName)
+				|| TryReadGameRomName(instance, type, out romName);
+		}
+
+		private static bool TryReadGameRomName(object instance, Type type, out string romName)
+		{
+			romName = null;
+			var game = ReadProperty(instance, type, "Game");
+			if (game == null) {
+				return false;
+			}
+
+			var gameType = game.GetType();
+			return TryReadStringProperty(game, gameType, "RomId", out romName)
+				|| TryReadStringProperty(game, gameType, "RomName", out romName);
+		}
+
+		private static object ReadProperty(object instance, Type type, string name)
+		{
+			try {
+				return type.GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)?.GetValue(instance);
+			} catch {
+				return null;
+			}
+		}
+
+		private static bool TryReadStringProperty(object instance, Type type, string name, out string value)
+		{
+			value = null;
+			try {
+				var property = type.GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+				if (property?.PropertyType != typeof(string)) {
+					return false;
+				}
+
+				value = (property.GetValue(instance) as string)?.Trim();
+				return !string.IsNullOrWhiteSpace(value);
+			} catch {
+				return false;
+			}
+		}
+
+		private static bool TryReadStringField(object instance, Type type, string name, out string value)
+		{
+			value = null;
+			try {
+				var field = type.GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+				if (field?.FieldType != typeof(string)) {
+					return false;
+				}
+
+				value = (field.GetValue(instance) as string)?.Trim();
+				return !string.IsNullOrWhiteSpace(value);
+			} catch {
+				return false;
+			}
+		}
+
+		private string ResolveAltColorPath(string configuredAltColorPath)
+		{
+			if (!string.IsNullOrWhiteSpace(configuredAltColorPath)) {
+				return configuredAltColorPath.Trim();
+			}
+
+			if (_defaultAltColorPathResolved) {
+				return _defaultAltColorPath;
+			}
+
+			var configPath = DmdBridgeConfig.ResolveEnvConfigPath();
+			if (!string.IsNullOrWhiteSpace(configPath)) {
+				var altColorPath = Path.Combine(Path.GetDirectoryName(configPath), "altcolor");
+				if (Directory.Exists(altColorPath)) {
+					_defaultAltColorPath = altColorPath;
+					_defaultAltColorPathResolved = true;
+					return _defaultAltColorPath;
+				}
+			}
+
+			_defaultAltColorPath = PathUtil.GetVpmFolder("altcolor", "[DMD]");
+			_defaultAltColorPathResolved = true;
+			return _defaultAltColorPath;
 		}
 
 		private void SyncNativeWindowLayout()
@@ -472,6 +719,7 @@ namespace VisualPinball.Engine.DMD.Unity
 		public int ZeDmdBrightness;
 		public bool ZeDmdDebug;
 		public bool EnableNativeWindow;
+		public bool EnableInSceneDisplay;
 		public int NativeWindowLeft;
 		public int NativeWindowTop;
 		public int NativeWindowWidth;
@@ -487,9 +735,11 @@ namespace VisualPinball.Engine.DMD.Unity
 		public float Gamma;
 		public Color GlassColor;
 		public float GlassLighting;
-		public bool EnableSerum;
+		public bool EnableColorization;
 		public string AltColorPath;
 		public string RomName;
+		public ScalerMode ColorizationScalerMode;
+		public string VniKey;
 		public bool FlipHorizontally;
 
 		public DmdBridgeSettings Clone()
@@ -506,6 +756,7 @@ namespace VisualPinball.Engine.DMD.Unity
 				&& ZeDmdBrightness == other.ZeDmdBrightness
 				&& ZeDmdDebug == other.ZeDmdDebug
 				&& EnableNativeWindow == other.EnableNativeWindow
+				&& EnableInSceneDisplay == other.EnableInSceneDisplay
 				&& NativeWindowLeft == other.NativeWindowLeft
 				&& NativeWindowTop == other.NativeWindowTop
 				&& NativeWindowWidth == other.NativeWindowWidth
@@ -521,9 +772,11 @@ namespace VisualPinball.Engine.DMD.Unity
 				&& Gamma.Equals(other.Gamma)
 				&& GlassColor.Equals(other.GlassColor)
 				&& GlassLighting.Equals(other.GlassLighting)
-				&& EnableSerum == other.EnableSerum
+				&& EnableColorization == other.EnableColorization
 				&& string.Equals(AltColorPath, other.AltColorPath, StringComparison.Ordinal)
 				&& string.Equals(RomName, other.RomName, StringComparison.Ordinal)
+				&& ColorizationScalerMode == other.ColorizationScalerMode
+				&& string.Equals(VniKey, other.VniKey, StringComparison.Ordinal)
 				&& FlipHorizontally == other.FlipHorizontally;
 		}
 
@@ -536,9 +789,12 @@ namespace VisualPinball.Engine.DMD.Unity
 				&& ZeDmdBrightness == other.ZeDmdBrightness
 				&& ZeDmdDebug == other.ZeDmdDebug
 				&& EnableNativeWindow == other.EnableNativeWindow
-				&& EnableSerum == other.EnableSerum
+				&& EnableInSceneDisplay == other.EnableInSceneDisplay
+				&& EnableColorization == other.EnableColorization
 				&& string.Equals(AltColorPath, other.AltColorPath, StringComparison.Ordinal)
 				&& string.Equals(RomName, other.RomName, StringComparison.Ordinal)
+				&& ColorizationScalerMode == other.ColorizationScalerMode
+				&& string.Equals(VniKey, other.VniKey, StringComparison.Ordinal)
 				&& FlipHorizontally == other.FlipHorizontally;
 		}
 	}
@@ -585,14 +841,21 @@ namespace VisualPinball.Engine.DMD.Unity
 			return Path.IsPathRooted(path) ? path : Path.Combine(Application.persistentDataPath, path);
 		}
 
-		private static string ResolveEnvConfigPath()
+		public static bool IsDefaultConfigPath(string path)
+		{
+			return string.IsNullOrWhiteSpace(path)
+				|| string.Equals(path.Trim(), "DmdDevice.ini", StringComparison.OrdinalIgnoreCase);
+		}
+
+		public static string ResolveEnvConfigPath()
 		{
 			var envValue = Environment.GetEnvironmentVariable(EnvConfig);
 			if (string.IsNullOrWhiteSpace(envValue)) {
 				return null;
 			}
 
-			foreach (var path in envValue.Split(';')) {
+			foreach (var rawPath in envValue.Split(';')) {
+				var path = Unquote(rawPath);
 				if (File.Exists(path)) {
 					return path;
 				}
@@ -653,7 +916,9 @@ namespace VisualPinball.Engine.DMD.Unity
 			}
 
 			settings.FlipHorizontally = GetBool(global, "fliphorizontally", settings.FlipHorizontally);
-			settings.EnableSerum = GetBool(global, "colorize", settings.EnableSerum);
+			settings.EnableColorization = GetBool(global, "colorize", settings.EnableColorization);
+			settings.ColorizationScalerMode = GetEnum(global, "vni.scalermode", settings.ColorizationScalerMode);
+			settings.VniKey = GetString(global, "vni.key", settings.VniKey);
 		}
 
 		private static void ApplyVirtualDmd(Dictionary<string, Dictionary<string, string>> ini, DmdBridgeSettings settings)
@@ -701,7 +966,7 @@ namespace VisualPinball.Engine.DMD.Unity
 				return;
 			}
 
-			settings.EnableSerum = GetBool(game, "colorize", settings.EnableSerum);
+			settings.EnableColorization = GetBool(game, "colorize", settings.EnableColorization);
 			var altColorPath = GetString(game, "altcolor", null);
 			if (!string.IsNullOrWhiteSpace(altColorPath)) {
 				settings.AltColorPath = Path.IsPathRooted(altColorPath)
@@ -753,6 +1018,15 @@ namespace VisualPinball.Engine.DMD.Unity
 			}
 
 			return float.TryParse(Unquote(value), NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed) ? parsed : fallback;
+		}
+
+		private static ScalerMode GetEnum(Dictionary<string, string> section, string key, ScalerMode fallback)
+		{
+			if (!section.TryGetValue(key, out var value)) {
+				return fallback;
+			}
+
+			return Enum.TryParse(Unquote(value), true, out ScalerMode parsed) ? parsed : fallback;
 		}
 
 		private static Color GetColor(Dictionary<string, string> section, string key, Color fallback)

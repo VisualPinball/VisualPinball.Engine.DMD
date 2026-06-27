@@ -22,6 +22,19 @@ dotnet build VisualPinball.Engine.DMD/VisualPinball.Engine.DMD.csproj
 
 Restart Unity after rebuilding Windows plugin binaries; the editor keeps loaded DLLs locked.
 
+`DmdBridgePlayer` automatically loads `DmdDevice.ini` when found. Relative INI paths
+are resolved from Unity's persistent data folder; `DMDDEVICE_CONFIG` is honored when set.
+The INI is read-only from this package; VPE-side settings should be persisted by VPE.
+The component/INI supports native-window layout and dmdext shader style keys such as
+`dotsize`, `dotrounding`, `dotsharpness`, `unlitdot`, `brightness`, `dotglow`,
+`backglow`, `gamma`, `glass`, and `glasslighting`.
+Colorization uses the shared LibDmd converter stage. Enable it with
+`[global] colorize = true`. If the component ROM name is empty, the bridge reads
+the active PinMAME `romId`. If the component altcolor path is empty, it uses the
+`DMDDEVICE_CONFIG` folder's `altcolor` directory, then LibDmd's VPM folder lookup.
+Serum is tried first, then VNI/PAL/PAC; `[global] vni.key` and
+`[global] vni.scalermode` are honored for PAC/VNI.
+
 Then add `VisualPinball.Engine.DMD.Unity` to a Unity project through Package Manager
 or via a `file:` entry in `Packages/manifest.json`.
 

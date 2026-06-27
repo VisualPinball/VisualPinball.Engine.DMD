@@ -11,6 +11,7 @@
     <LibDmdCoreProject>$(LibDmdExtensionsRoot)\LibDmd.Core\LibDmd.Core.csproj</LibDmdCoreProject>
     <LibDmdCoreWindowsProject>$(LibDmdExtensionsRoot)\LibDmd.Core.Windows\LibDmd.Core.Windows.csproj</LibDmdCoreWindowsProject>
     <LibDmdNativeRoot>$(LibDmdExtensionsRoot)\native\nuget\runtimes</LibDmdNativeRoot>
+    <LibDmdCostura64Root>$(LibDmdExtensionsRoot)\LibDmd\Costura64</LibDmdCostura64Root>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(RuntimeIdentifier)' == ''">
@@ -35,6 +36,11 @@
     <ItemGroup>
       <Plugins Include="$(OutDir)*.dll" Exclude="$(OutDir)NLog.dll" />
       <Plugins Include="$(LibDmdNativeRoot)\$(RuntimeIdentifier)\native\*" />
+      <Plugins Include="$(LibDmdCostura64Root)\ftd2xx.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
+      <Plugins Include="$(LibDmdCostura64Root)\libserialport64-0.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
+      <Plugins Include="$(LibDmdCostura64Root)\libSkiaSharp.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
+      <Plugins Include="$(LibDmdCostura64Root)\sockpp64.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
+      <Plugins Include="$(LibDmdCostura64Root)\sqlite3.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
       <StaleNLogPlugins Include="..\VisualPinball.Engine.DMD.Unity\Plugins\**\NLog.dll" />
       <StaleNLogPlugins Include="..\VisualPinball.Engine.DMD.Unity\Plugins\**\NLog.dll.meta" />
       <StaleWindowsPlugins Include="..\VisualPinball.Engine.DMD.Unity\Plugins\linux-x64\LibDmd.Core.Windows.dll" />
