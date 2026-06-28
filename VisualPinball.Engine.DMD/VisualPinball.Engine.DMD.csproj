@@ -85,11 +85,18 @@
     <Copy SourceFiles="@(ManagedPlugins)" DestinationFolder="$(UnityManagedDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(NativePlugins)" DestinationFolder="$(UnityNativeDir)" SkipUnchangedFiles="true" />
     <!-- The shim P/Invokes "libserialport"; deploy the native under that exact name. Windows uses a
-         renamed copy of the Costura libserialport64-0.dll. macOS already ships libserialport.dylib
-         (canonical) via the native staging; Linux needs a libserialport.so alias (TODO, see vendor). -->
+         renamed copy of the Costura libserialport64-0.dll; Linux aliases the versioned .so the
+         zedmd/serum archives stage as libserialport.so.0.1.1. macOS already ships the canonical
+         libserialport.dylib via the native staging. -->
     <Copy Condition="'$(RuntimeIdentifier)' == 'win-x64'"
           SourceFiles="$(LibDmdCostura64Root)\libserialport64-0.dll"
           DestinationFiles="$(UnityNativeDir)\libserialport.dll" SkipUnchangedFiles="true" />
+    <ItemGroup Condition="'$(RuntimeIdentifier)' == 'linux-x64'">
+      <_LinuxSerialPort Include="$(LibDmdNativeRoot)\linux-x64\native\libserialport.so.*" />
+    </ItemGroup>
+    <Copy Condition="'$(RuntimeIdentifier)' == 'linux-x64' And '@(_LinuxSerialPort)' != ''"
+          SourceFiles="@(_LinuxSerialPort)"
+          DestinationFiles="$(UnityNativeDir)\libserialport.so" SkipUnchangedFiles="true" />
     <Delete Files="@(StaleManagedInRid)" />
     <Delete Files="@(StaleNLogPlugins)" />
   </Target>
