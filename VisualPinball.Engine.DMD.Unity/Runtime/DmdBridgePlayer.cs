@@ -97,6 +97,7 @@ namespace VisualPinball.Engine.DMD.Unity
 		private DmdBridgeSettings _settings;
 		private DmdBridgeSettings _appliedSettings;
 		private DmdBridgeSettings _lastFallbackSettings;
+		private readonly DmdColorizationPolicy _colorizationPolicy = new DmdColorizationPolicy();
 		private DateTime _appliedConfigWriteTimeUtc;
 		private string _appliedConfigPath;
 		private bool _missingDisplayWarningLogged;
@@ -196,8 +197,9 @@ namespace VisualPinball.Engine.DMD.Unity
 					continue;
 				}
 
-				EnsurePipeline(display);
-				_pipeline?.Clear();
+				if (EnsurePipeline(display)) {
+					_pipeline?.Clear();
+				}
 				return;
 			}
 		}
@@ -231,7 +233,17 @@ namespace VisualPinball.Engine.DMD.Unity
 				}
 			}
 
-			_pipeline.Push(frame);
+			// This handler runs on Unity's main thread. Rebuilding here is intentional: the pipeline
+			// worker cannot dispose itself because disposal waits for that worker to finish.
+			if (_pipeline != null && _pipeline.UsesColorization &&
+			    _colorizationPolicy.ObserveColorizedFrame(frame.Format, out var shouldWarn)) {
+				if (shouldWarn) {
+					Logger.Warn($"[DMD] Unsupported colorization source format {frame.Format} — bypassing colorization for display \"{frame.Id}\".");
+				}
+				EnsurePipeline(_currentDisplay, force: true);
+			}
+
+			_pipeline?.Push(frame);
 		}
 
 		private bool IsTargetDisplay(string id)
@@ -242,7 +254,7 @@ namespace VisualPinball.Engine.DMD.Unity
 				: string.Equals(id, targetDisplayId, StringComparison.OrdinalIgnoreCase);
 		}
 
-		private static bool TryInferDisplayConfig(DisplayFrameData frame, out DisplayConfig display)
+		internal static bool TryInferDisplayConfig(DisplayFrameData frame, out DisplayConfig display)
 		{
 			display = null;
 			if (frame?.Data == null) {
@@ -290,11 +302,12 @@ namespace VisualPinball.Engine.DMD.Unity
 			}
 		}
 
-		private void EnsurePipeline(DisplayConfig display, bool force = false)
+		private bool EnsurePipeline(DisplayConfig display, bool force = false)
 		{
+			_colorizationPolicy.SelectDisplay(display);
 			_currentDisplay = display;
 			if (!force && _pipeline != null && _pipeline.Matches(display)) {
-				return;
+				return false;
 			}
 
 			_pipeline?.Dispose();
@@ -303,14 +316,17 @@ namespace VisualPinball.Engine.DMD.Unity
 			if (destinations.Count == 0) {
 				Logger.Warn("[DMD] No DMD destinations are available; bridge will ignore frames.");
 				_pipeline = null;
-				return;
+				return true;
 			}
 
-			var converter = CreateConverter();
-			_resolvedConverter = converter?.Name ?? "none";
+			var converter = _colorizationPolicy.BypassColorization ? null : CreateConverter();
+			_resolvedConverter = _colorizationPolicy.BypassColorization
+				? "bypassed (unsupported source format)"
+				: converter?.Name ?? "none";
 			RequestSourceFrameFormat(converter != null ? DisplayFrameFormat.Dmd4 : DisplayFrameFormat.Dmd8);
 			_pipeline = new DmdPipeline(display, destinations, converter, _settings.FlipHorizontally);
 			Logger.Info($"[DMD] Pipeline for \"{display.Id}\" created with {destinations.Count} destination(s).");
+			return true;
 		}
 
 		private void RequestSourceFrameFormat(DisplayFrameFormat format)

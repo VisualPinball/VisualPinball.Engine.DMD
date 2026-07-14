@@ -3,7 +3,9 @@ using System.Reactive;
 using System.Reactive.Subjects;
 using LibDmd.Frame;
 using LibDmd.Input;
+using NLog;
 using VisualPinball.Unity;
+using Logger = NLog.Logger;
 
 namespace VisualPinball.Engine.DMD.Unity
 {
@@ -17,6 +19,7 @@ namespace VisualPinball.Engine.DMD.Unity
 
 		private readonly Subject<Unit> _onResume = new Subject<Unit>();
 		private readonly Subject<Unit> _onPause = new Subject<Unit>();
+		private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
 		protected VpeGleSource(string displayId, int width, int height)
 		{
@@ -104,6 +107,7 @@ namespace VisualPinball.Engine.DMD.Unity
 		{
 			private readonly Subject<DmdFrame> _gray2Frames = new Subject<DmdFrame>();
 			private readonly Subject<DmdFrame> _gray4Frames = new Subject<DmdFrame>();
+			private bool _unsupportedFormatWarningLogged;
 
 			public ColorizableVpeGleSource(string displayId, int width, int height) : base(displayId, width, height)
 			{
@@ -117,6 +121,12 @@ namespace VisualPinball.Engine.DMD.Unity
 						break;
 					case DisplayFrameFormat.Dmd4:
 						_gray4Frames.OnNext(CreateFrame(data, length, 4));
+						break;
+					default:
+						if (!_unsupportedFormatWarningLogged) {
+							Logger.Warn($"[DMD] Colorization source cannot consume {format}; frame ignored while the main-thread bridge switches to passthrough.");
+							_unsupportedFormatWarningLogged = true;
+						}
 						break;
 				}
 			}

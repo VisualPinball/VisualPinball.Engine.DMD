@@ -1,0 +1,24 @@
+{
+	"name": "VisualPinball.Engine.DMD.Unity.Test",
+	"rootNamespace": "VisualPinball.Engine.DMD.Unity.Test",
+	"references": [
+		"VisualPinball.Engine.DMD.Unity",
+		"VisualPinball.Unity"
+	],
+	"includePlatforms": [
+		"Editor"
+	],
+	"excludePlatforms": [],
+	"allowUnsafeCode": false,
+	"overrideReferences": false,
+	"precompiledReferences": [],
+	"autoReferenced": false,
+	"defineConstraints": [
+		"UNITY_INCLUDE_TESTS"
+	],
+	"versionDefines": [],
+	"noEngineReferences": false,
+	"optionalUnityReferences": [
+		"TestAssemblies"
+	]
+}

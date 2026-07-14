@@ -49,11 +49,13 @@ namespace VisualPinball.Engine.DMD.Unity
 		private volatile bool _running = true;
 
 		private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+		public bool UsesColorization { get; }
 
 		public DmdPipeline(DisplayConfig display, List<IDestination> destinations, AbstractConverter converter, bool flipHorizontally)
 		{
 			_display = display;
 			_destinations = destinations;
+			UsesColorization = converter != null;
 			_source = VpeGleSource.Create(display, converter != null);
 			_renderGraph = new RenderGraph(new UndisposedReferences(), runOnMainThread: true) {
 				Name = $"VPE DMD ({display.Id})",
