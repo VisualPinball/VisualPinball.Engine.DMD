@@ -235,11 +235,18 @@ namespace VisualPinball.Engine.DMD.Unity
 
 			// This handler runs on Unity's main thread. Rebuilding here is intentional: the pipeline
 			// worker cannot dispose itself because disposal waits for that worker to finish.
-			if (_pipeline != null && _pipeline.UsesColorization &&
-			    _colorizationPolicy.ObserveColorizedFrame(frame.Format, out var shouldWarn)) {
+			var colorizationAction = _colorizationPolicy.ObserveFrame(frame.Format,
+				_pipeline != null && _pipeline.UsesColorization, out var shouldWarn);
+			if (colorizationAction == DmdColorizationPipelineAction.Bypass) {
 				if (shouldWarn) {
-					Logger.Warn($"[DMD] Unsupported colorization source format {frame.Format} — bypassing colorization for display \"{frame.Id}\".");
+					var recovery = _colorizationPolicy.AwaitingSupportedColorizedFrame
+						? " temporarily; colorization will resume when Dmd2/Dmd4 arrives"
+						: string.Empty;
+					Logger.Warn($"[DMD] Unsupported colorization source format {frame.Format} — bypassing colorization{recovery} for display \"{frame.Id}\".");
 				}
+				EnsurePipeline(_currentDisplay, force: true);
+			} else if (colorizationAction == DmdColorizationPipelineAction.Restore) {
+				Logger.Info($"[DMD] Supported colorization format {frame.Format} arrived — restoring colorization for display \"{frame.Id}\".");
 				EnsurePipeline(_currentDisplay, force: true);
 			}
 
@@ -323,10 +330,18 @@ namespace VisualPinball.Engine.DMD.Unity
 			_resolvedConverter = _colorizationPolicy.BypassColorization
 				? "bypassed (unsupported source format)"
 				: converter?.Name ?? "none";
-			RequestSourceFrameFormat(converter != null ? DisplayFrameFormat.Dmd4 : DisplayFrameFormat.Dmd8);
+			RequestSourceFrameFormat(PreferredSourceFormat(converter != null, _colorizationPolicy));
 			_pipeline = new DmdPipeline(display, destinations, converter, _settings.FlipHorizontally);
 			Logger.Info($"[DMD] Pipeline for \"{display.Id}\" created with {destinations.Count} destination(s).");
 			return true;
+		}
+
+		internal static DisplayFrameFormat PreferredSourceFormat(bool converterAvailable,
+			DmdColorizationPolicy policy)
+		{
+			return converterAvailable || policy != null && policy.AwaitingSupportedColorizedFrame
+				? DisplayFrameFormat.Dmd4
+				: DisplayFrameFormat.Dmd8;
 		}
 
 		private void RequestSourceFrameFormat(DisplayFrameFormat format)

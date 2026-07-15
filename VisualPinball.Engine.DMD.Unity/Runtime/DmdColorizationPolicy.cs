@@ -3,6 +3,13 @@ using VisualPinball.Unity;
 
 namespace VisualPinball.Engine.DMD.Unity
 {
+	internal enum DmdColorizationPipelineAction
+	{
+		None,
+		Bypass,
+		Restore,
+	}
+
 	/// <summary>
 	/// Tracks whether the selected display must bypass a colorization source that cannot consume
 	/// the format emitted by its gamelogic engine.
@@ -13,6 +20,7 @@ namespace VisualPinball.Engine.DMD.Unity
 		private bool _warningIssued;
 
 		public bool BypassColorization { get; private set; }
+		public bool AwaitingSupportedColorizedFrame { get; private set; }
 
 		/// <summary>
 		/// Selects a display topology. An identical re-announcement deliberately preserves the
@@ -26,23 +34,39 @@ namespace VisualPinball.Engine.DMD.Unity
 
 			_display = display;
 			BypassColorization = false;
+			AwaitingSupportedColorizedFrame = false;
 			_warningIssued = false;
 		}
 
 		/// <summary>
-		/// Returns whether the active colorizing pipeline must be rebuilt as passthrough.
+		/// Decides whether the bridge must rebuild its pipeline. A Dmd8 frame may be the transient
+		/// pre-preference frame from a missed display announcement, so its bypass recovers when the
+		/// requested Dmd2/Dmd4 stream arrives. Dmd24 is RGB-authored and remains a sticky bypass.
 		/// </summary>
-		public bool ObserveColorizedFrame(DisplayFrameFormat format, out bool shouldWarn)
+		public DmdColorizationPipelineAction ObserveFrame(DisplayFrameFormat format,
+			bool pipelineUsesColorization, out bool shouldWarn)
 		{
+			if (!pipelineUsesColorization) {
+				if (BypassColorization && AwaitingSupportedColorizedFrame && SupportsColorization(format)) {
+					BypassColorization = false;
+					AwaitingSupportedColorizedFrame = false;
+					shouldWarn = false;
+					return DmdColorizationPipelineAction.Restore;
+				}
+				shouldWarn = false;
+				return DmdColorizationPipelineAction.None;
+			}
+
 			if (SupportsColorization(format)) {
 				shouldWarn = false;
-				return false;
+				return DmdColorizationPipelineAction.None;
 			}
 
 			BypassColorization = true;
+			AwaitingSupportedColorizedFrame = format == DisplayFrameFormat.Dmd8;
 			shouldWarn = !_warningIssued;
 			_warningIssued = true;
-			return true;
+			return DmdColorizationPipelineAction.Bypass;
 		}
 
 		public static bool SupportsColorization(DisplayFrameFormat format)

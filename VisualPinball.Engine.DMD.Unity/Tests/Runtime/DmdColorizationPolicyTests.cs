@@ -63,16 +63,55 @@ namespace VisualPinball.Engine.DMD.Unity.Test
 		}
 
 		[Test]
-		public void UnsupportedFormatLatchesBypassAndWarnsOnce()
+		public void Rgb24LatchesStickyBypassAndWarnsOnce()
 		{
 			var policy = new DmdColorizationPolicy();
 			policy.SelectDisplay(new DisplayConfig("dmd0", 128, 32));
 
-			Assert.That(policy.ObserveColorizedFrame(DisplayFrameFormat.Dmd24, out var firstWarning), Is.True);
+			Assert.That(policy.ObserveFrame(DisplayFrameFormat.Dmd24, true, out var firstWarning),
+				Is.EqualTo(DmdColorizationPipelineAction.Bypass));
 			Assert.That(policy.BypassColorization, Is.True);
+			Assert.That(policy.AwaitingSupportedColorizedFrame, Is.False);
 			Assert.That(firstWarning, Is.True);
-			Assert.That(policy.ObserveColorizedFrame(DisplayFrameFormat.Dmd8, out var secondWarning), Is.True);
+			Assert.That(policy.ObserveFrame(DisplayFrameFormat.Dmd4, false, out var secondWarning),
+				Is.EqualTo(DmdColorizationPipelineAction.None));
+			Assert.That(policy.BypassColorization, Is.True);
 			Assert.That(secondWarning, Is.False);
+		}
+
+		[Test]
+		public void TransientDmd8BypassKeepsPreferenceAndRestoresOnSupportedFrame()
+		{
+			var policy = new DmdColorizationPolicy();
+			policy.SelectDisplay(new DisplayConfig("dmd0", 128, 32));
+
+			Assert.That(policy.ObserveFrame(DisplayFrameFormat.Dmd8, true, out var warning),
+				Is.EqualTo(DmdColorizationPipelineAction.Bypass));
+			Assert.That(warning, Is.True);
+			Assert.That(policy.BypassColorization, Is.True);
+			Assert.That(policy.AwaitingSupportedColorizedFrame, Is.True);
+
+			Assert.That(policy.ObserveFrame(DisplayFrameFormat.Dmd4, false, out warning),
+				Is.EqualTo(DmdColorizationPipelineAction.Restore));
+			Assert.That(warning, Is.False);
+			Assert.That(policy.BypassColorization, Is.False);
+			Assert.That(policy.AwaitingSupportedColorizedFrame, Is.False);
+		}
+
+		[Test]
+		public void BridgeKeepsRequestingColorizableFramesDuringTransientBypass()
+		{
+			var policy = new DmdColorizationPolicy();
+			policy.SelectDisplay(new DisplayConfig("dmd0", 128, 32));
+			policy.ObserveFrame(DisplayFrameFormat.Dmd8, true, out _);
+
+			Assert.That(DmdBridgePlayer.PreferredSourceFormat(false, policy),
+				Is.EqualTo(DisplayFrameFormat.Dmd4));
+
+			policy.SelectDisplay(new DisplayConfig("dmd1", 128, 32));
+			policy.ObserveFrame(DisplayFrameFormat.Dmd24, true, out _);
+			Assert.That(DmdBridgePlayer.PreferredSourceFormat(false, policy),
+				Is.EqualTo(DisplayFrameFormat.Dmd8));
 		}
 
 		[Test]
@@ -80,12 +119,12 @@ namespace VisualPinball.Engine.DMD.Unity.Test
 		{
 			var policy = new DmdColorizationPolicy();
 			policy.SelectDisplay(new DisplayConfig("DMD0", 140, 36, true, Color.red, Color.black));
-			policy.ObserveColorizedFrame(DisplayFrameFormat.Dmd24, out _);
+			policy.ObserveFrame(DisplayFrameFormat.Dmd24, true, out _);
 
 			policy.SelectDisplay(new DisplayConfig("dmd0", 140, 36, true, Color.green, Color.white));
 
 			Assert.That(policy.BypassColorization, Is.True);
-			policy.ObserveColorizedFrame(DisplayFrameFormat.Dmd8, out var shouldWarn);
+			policy.ObserveFrame(DisplayFrameFormat.Dmd8, false, out var shouldWarn);
 			Assert.That(shouldWarn, Is.False);
 		}
 
@@ -102,12 +141,12 @@ namespace VisualPinball.Engine.DMD.Unity.Test
 		{
 			var policy = new DmdColorizationPolicy();
 			policy.SelectDisplay(new DisplayConfig("dmd0", 140, 36, true));
-			policy.ObserveColorizedFrame(DisplayFrameFormat.Dmd24, out _);
+			policy.ObserveFrame(DisplayFrameFormat.Dmd24, true, out _);
 
 			policy.SelectDisplay(changed);
 
 			Assert.That(policy.BypassColorization, Is.False);
-			policy.ObserveColorizedFrame(DisplayFrameFormat.Dmd24, out var shouldWarn);
+			policy.ObserveFrame(DisplayFrameFormat.Dmd24, true, out var shouldWarn);
 			Assert.That(shouldWarn, Is.True);
 		}
 
