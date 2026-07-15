@@ -50,6 +50,7 @@ namespace VisualPinball.Engine.DMD.Unity
 				if (BypassColorization && AwaitingSupportedColorizedFrame && SupportsColorization(format)) {
 					BypassColorization = false;
 					AwaitingSupportedColorizedFrame = false;
+					_warningIssued = false;
 					shouldWarn = false;
 					return DmdColorizationPipelineAction.Restore;
 				}

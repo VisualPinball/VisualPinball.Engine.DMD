@@ -99,6 +99,20 @@ namespace VisualPinball.Engine.DMD.Unity.Test
 		}
 
 		[Test]
+		public void TransientDmd8BypassWarnsAgainAfterRestoringColorization()
+		{
+			var policy = new DmdColorizationPolicy();
+			policy.SelectDisplay(new DisplayConfig("dmd0", 128, 32));
+
+			policy.ObserveFrame(DisplayFrameFormat.Dmd8, true, out var firstWarning);
+			policy.ObserveFrame(DisplayFrameFormat.Dmd4, false, out _);
+			policy.ObserveFrame(DisplayFrameFormat.Dmd8, true, out var secondWarning);
+
+			Assert.That(firstWarning, Is.True);
+			Assert.That(secondWarning, Is.True);
+		}
+
+		[Test]
 		public void BridgeKeepsRequestingColorizableFramesDuringTransientBypass()
 		{
 			var policy = new DmdColorizationPolicy();
