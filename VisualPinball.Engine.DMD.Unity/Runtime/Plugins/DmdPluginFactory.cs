@@ -36,18 +36,22 @@ namespace VisualPinball.Engine.DMD.Player
 		{
 			var field = Field(id, label, kind, value, provider, minimum, maximum); field.Scope = ConfigurationScope.GlobalOnly; return field;
 		}
+		private static PluginField Coordinate(string id, string label, string row, int value, double? minimum = null, double? maximum = null)
+		{
+			var field = Field(id, label, SettingKind.Integer, value, minimum: minimum, maximum: maximum); field.Row = row; return field;
+		}
 		private static PluginSettingsSchema BuildSchema() => new PluginSettingsSchema(1,
 			new PluginSettingsGroup("Colorizations", "Choose an available version for each game. The original library stays unchanged.",
-				new PluginField("AltColorRoot", "Colorization library", SettingKind.Folder) { Default = "", Description = "The altcolor folder containing one folder per ROM." },
+				new PluginField("AltColorRoot", "Colorization library", SettingKind.Folder) { Default = "", FullWidth = true, Description = "The altcolor folder containing one folder per ROM." },
 				Field("Colorization", "Colorization", SettingKind.Choice, "auto", "colorizations"),
 				Field("ColorizationScalerMode", "Scaler", SettingKind.Choice, "None", "scalers"),
-				new PluginField("VniKey", "PAC key", SettingKind.Text) { Default = "" }),
+				new PluginField("VniKey", "PAC key", SettingKind.Text) { Default = "", FullWidth = true }),
 			new PluginSettingsGroup("Display outputs", "Native placement uses desktop pixels and allows negative coordinates on any monitor.",
 				new PluginField("Source", "DMD source", SettingKind.Choice) { Default = "auto", Scope = ConfigurationScope.GameOnly, Provider = "sources" },
 				Field("EnableInSceneDisplay", "Use the table's DMD", SettingKind.Boolean, true),
 				Field("EnableNativeWindow", "Native borderless window", SettingKind.Boolean, false),
-				Field("NativeWindowLeft", "Left", SettingKind.Integer, 100), Field("NativeWindowTop", "Top", SettingKind.Integer, 100),
-				Field("NativeWindowWidth", "Width", SettingKind.Integer, 512, minimum: 1, maximum: 16384), Field("NativeWindowHeight", "Height", SettingKind.Integer, 128, minimum: 1, maximum: 16384),
+				Coordinate("NativeWindowLeft", "Left", "native-position", 100), Coordinate("NativeWindowTop", "Top", "native-position", 100),
+				Coordinate("NativeWindowWidth", "Width", "native-size", 512, minimum: 1, maximum: 16384), Coordinate("NativeWindowHeight", "Height", "native-size", 128, minimum: 1, maximum: 16384),
 				Field("NativeWindowStayOnTop", "Keep on top", SettingKind.Boolean, false), Field("FlipHorizontally", "Mirror horizontally", SettingKind.Boolean, false)),
 			new PluginSettingsGroup("Cabinet hardware", "Outputs are acquired exclusively. A disabled plugin opens no device.",
 				Hardware("EnableZeDmd", "ZeDMD", SettingKind.Boolean, false), Hardware("ZeDmdPort", "ZeDMD port", SettingKind.Text, ""), Hardware("ZeDmdBrightness", "ZeDMD brightness", SettingKind.Integer, 8, minimum: 0, maximum: 15), Hardware("ZeDmdDebug", "ZeDMD diagnostics", SettingKind.Boolean, false),
@@ -60,7 +64,7 @@ namespace VisualPinball.Engine.DMD.Player
 				Field("Brightness", "Brightness", SettingKind.Number, 0.95, minimum: 0, maximum: 4), Field("DotGlow", "Dot glow", SettingKind.Number, 0, minimum: 0, maximum: 4), Field("BackGlow", "Background glow", SettingKind.Number, 0, minimum: 0, maximum: 4), Field("Gamma", "Gamma", SettingKind.Number, 1, minimum: 0.1, maximum: 4),
 				Field("UnlitDot", "Unlit dot color", SettingKind.Color, "#000000"), Field("GlassColor", "Glass color", SettingKind.Color, "#000000"), Field("GlassLighting", "Glass lighting", SettingKind.Number, 0, minimum: 0, maximum: 4)),
 			new PluginSettingsGroup("Import existing settings", "Import once into the draft, review it, then Apply. The INI is never rewritten.",
-				new PluginField("ImportPath", "DmdDevice.ini", SettingKind.File) { Default = "" }, new PluginField("Import", "Import INI", SettingKind.Action) { Provider = "import-ini" }));
+				new PluginField("ImportPath", "DmdDevice.ini", SettingKind.File) { Default = "", FullWidth = true }, new PluginField("Import", "Import INI", SettingKind.Action) { Provider = "import-ini" }));
 		internal static DmdBridgeSettings Settings(PluginSettingsSnapshot snapshot)
 		{
 			var values = (JObject)snapshot.Values.DeepClone(); values.Remove("UnlitDot"); values.Remove("GlassColor");
