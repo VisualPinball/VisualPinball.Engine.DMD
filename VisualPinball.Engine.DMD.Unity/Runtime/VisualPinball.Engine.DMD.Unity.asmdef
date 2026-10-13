@@ -3,7 +3,8 @@
 	"rootNamespace": "VisualPinball.Engine.DMD.Unity",
 	"references": [
 		"VisualPinball.Engine",
-		"VisualPinball.Unity"
+		"VisualPinball.Unity",
+		"VisualPinball.Plugins"
 	],
 	"includePlatforms": [],
 	"excludePlatforms": [],

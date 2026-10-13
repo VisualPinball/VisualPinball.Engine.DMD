@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using LibDmd;
 using LibDmd.Converter;
 using LibDmd.Output;
 using LibDmd.Output.NativeWindow;
 using NLog;
 using VisualPinball.Unity;
+using VisualPinball.Plugins;
 using Logger = NLog.Logger;
 
 namespace VisualPinball.Engine.DMD.Unity
@@ -47,6 +49,9 @@ namespace VisualPinball.Engine.DMD.Unity
 		private bool _hasPending;
 		private bool _clearRequested;
 		private volatile bool _running = true;
+		private readonly TaskCompletionSource<bool> _stopped = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+		private readonly SynchronizationContext _owner = SynchronizationContext.Current;
+		private bool _disposed;
 
 		private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
@@ -105,6 +110,18 @@ namespace VisualPinball.Engine.DMD.Unity
 			_signal.Set();
 		}
 
+		public void Push(in PluginDisplayFrame frame)
+		{
+			int rowBytes = frame.Width * (frame.Encoding == DisplayEncoding.Rgb24 ? 3 : 1);
+			int length = checked(rowBytes * frame.Height);
+			lock (_gate) {
+				if (!_running) return;
+				if (_pending == null || _pending.Length < length) _pending = new byte[length];
+				for (int row = 0; row < frame.Height; row++) frame.Pixels.Span.Slice(row * frame.Stride, rowBytes).CopyTo(_pending.AsSpan(row * rowBytes, rowBytes));
+				_pendingLength = length; _pendingFormat = GamelogicPluginResources.ToLegacy(frame.Encoding); _hasPending = true;
+			}
+			_signal.Set();
+		}
 		public void Clear()
 		{
 			lock (_gate) {
@@ -154,62 +171,72 @@ namespace VisualPinball.Engine.DMD.Unity
 
 		private void WorkerLoop()
 		{
-			while (_running) {
-				_signal.WaitOne();
-
+			try {
 				while (_running) {
-					bool doClear;
-					bool doFrame;
-					DisplayFrameFormat format = default;
-					int length = 0;
+					_signal.WaitOne();
 
-					lock (_gate) {
-						doClear = _clearRequested;
-						_clearRequested = false;
+					while (_running) {
+						bool doClear;
+						bool doFrame;
+						DisplayFrameFormat format = default;
+						int length = 0;
 
-						doFrame = _hasPending;
-						_hasPending = false;
-						if (doFrame) {
-							// Swap the just-written buffer in; the old work buffer becomes the next
-							// pending slot. No allocation, no copy held under the lock beyond the swap.
-							var swap = _work;
-							_work = _pending;
-							_pending = swap;
-							format = _pendingFormat;
-							length = _pendingLength;
+						lock (_gate) {
+							doClear = _clearRequested;
+							_clearRequested = false;
+
+							doFrame = _hasPending;
+							_hasPending = false;
+							if (doFrame) {
+								// Swap the just-written buffer in; the old work buffer becomes the next
+								// pending slot. No allocation, no copy held under the lock beyond the swap.
+								var swap = _work;
+								_work = _pending;
+								_pending = swap;
+								format = _pendingFormat;
+								length = _pendingLength;
+							}
 						}
-					}
 
-					if (!_running) {
-						return;
-					}
-
-					try {
-						if (doClear) {
-							_renderGraph.ClearDisplay();
+						if (!_running) {
+							return;
 						}
-						if (doFrame) {
-							_source.Push(format, _work, length);
-						}
-					} catch (Exception exception) {
-						Logger.Warn(exception, "[DMD] DMD worker failed to render a frame.");
-					}
 
-					if (!doClear && !doFrame) {
-						break;
+						try {
+							if (doClear) {
+								_renderGraph.ClearDisplay();
+							}
+							if (doFrame) {
+								_source.Push(format, _work, length);
+							}
+						} catch (Exception exception) {
+							Logger.Warn(exception, "[DMD] DMD worker failed to render a frame.");
+						}
+
+						if (!doClear && !doFrame) {
+							break;
+						}
 					}
 				}
-			}
+			} finally { _stopped.TrySetResult(true); }
 		}
 
+		public Task StopWorkerAsync()
+		{
+			if (_disposed) return Task.CompletedTask;
+			_running = false; _signal.Set(); return _stopped.Task;
+		}
 		public void Dispose()
 		{
+			if (_disposed) return;
 			_running = false;
 			_signal.Set();
 			if (_worker != null && _worker.IsAlive && !_worker.Join(TimeSpan.FromSeconds(1))) {
-				Logger.Warn("[DMD] DMD worker thread did not stop within 1s.");
+				Logger.Warn("[DMD] Waiting for the native worker before releasing its graph.");
+				if (_owner != null) _stopped.Task.ContinueWith(_ => _owner.Post(__ => Dispose(), null), TaskScheduler.Default);
+				return;
 			}
-
+			_disposed = true;
 			_renderer?.Dispose();
 			_renderGraph?.Dispose();
 			_signal.Dispose();

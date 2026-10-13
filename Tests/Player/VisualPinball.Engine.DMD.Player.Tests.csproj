@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<IsTestProject>true</IsTestProject>
+		<IsPackable>false</IsPackable>
+		<VpeSourceRoot Condition="'$(VpeSourceRoot)' == ''">../../../VisualPinball.Engine</VpeSourceRoot>
+	</PropertyGroup>
+	<ItemGroup>
+		<ProjectReference Include="$(VpeSourceRoot)/VisualPinball.Plugins/VisualPinball.Plugins.csproj" />
+		<Compile Include="../../VisualPinball.Engine.DMD.Player/Runtime/ColorizationCatalog.cs" Link="ColorizationCatalog.cs" />
+		<PackageReference Include="NUnit" Version="3.13.3" />
+		<PackageReference Include="NUnit3TestAdapter" Version="4.2.1" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+	</ItemGroup>
+</Project>

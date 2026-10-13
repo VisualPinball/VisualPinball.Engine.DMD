@@ -1,0 +1,6 @@
+{
+	"name": "VisualPinball.Engine.DMD.Player",
+	"rootNamespace": "VisualPinball.Engine.DMD.Player",
+	"references": ["VisualPinball.Plugins", "VisualPinball.Unity", "VisualPinball.Engine.DMD.Unity", "Newtonsoft.Json"],
+	"autoReferenced": true
+}
