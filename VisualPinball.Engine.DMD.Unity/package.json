@@ -24,5 +24,6 @@
   },
   "publishConfig": {
     "registry": "https://registry.visualpinball.org"
-  }
+  },
+  "license": "(GPL-2.0-only AND MIT)"
 }
