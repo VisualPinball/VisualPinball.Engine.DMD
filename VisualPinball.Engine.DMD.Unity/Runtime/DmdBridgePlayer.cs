@@ -1,3 +1,9 @@
+// Visual Pinball Engine
+// Copyright (C) 2026 freezy and VPE Team
+//
+// SPDX-License-Identifier: MIT
+// See LICENSE for the terms of use and distribution.
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
