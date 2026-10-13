@@ -1,0 +1,17 @@
+{
+	"name": "org.visualpinball.engine.dmd.player",
+	"version": "0.1.0",
+	"displayName": "Visual Pinball Engine (DMD Player Plugin)",
+	"description": "Optional player configuration and resource routing for DMD Extensions.",
+	"unity": "6000.5",
+	"unityRelease": "0f1",
+	"author": "freezy <freezy@vpdb.io>",
+	"keywords": ["Unity", "Pinball", "DMD", "Player", "Plugin"],
+	"documentationUrl": "https://docs.visualpinball.org/",
+	"changelogUrl": "https://docs.visualpinball.org/CHANGELOG.html",
+	"licensesUrl": "https://github.com/VisualPinball/VisualPinball.Engine.DMD/blob/master/VisualPinball.Engine.DMD.Player/LICENSE",
+	"repository": { "url": "https://github.com/VisualPinball/VisualPinball.Engine.DMD.git", "type": "git" },
+	"publishConfig": { "registry": "https://registry.visualpinball.org" },
+	"license": "MIT",
+	"dependencies": { "org.visualpinball.engine.unity": "0.0.1-preview.212", "org.visualpinball.engine.dmd": "0.0.1-preview.2" }
+}

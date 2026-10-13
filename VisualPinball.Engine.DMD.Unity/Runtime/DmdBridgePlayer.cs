@@ -3,6 +3,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Threading.Tasks;
+using System.Threading;
 using LibDmd;
 using LibDmd.Common;
 using LibDmd.Converter;
@@ -20,6 +22,7 @@ using NLog;
 using UnityEngine;
 using UnityEngine.Serialization;
 using VisualPinball.Unity;
+using VisualPinball.Plugins;
 using Logger = NLog.Logger;
 
 namespace VisualPinball.Engine.DMD.Unity
@@ -92,6 +95,14 @@ namespace VisualPinball.Engine.DMD.Unity
 
 		private Player _player;
 		private IGamelogicEngine _gamelogicEngine;
+		private bool _managed;
+		private bool _shutdown;
+		private GameObject _managedScene;
+		private Func<IDestination> _presentationDestination;
+		private OwnerScheduler _ownerScheduler;
+		private Task _shutdownTask;
+		private Task _managedRebuild;
+		private long _sourceInstance;
 		private DmdPipeline _pipeline;
 		private DisplayConfig _currentDisplay;
 		private DmdBridgeSettings _settings;
@@ -114,6 +125,7 @@ namespace VisualPinball.Engine.DMD.Unity
 
 		private IEnumerator Start()
 		{
+			if (_managed || PlayerIntegrationMode.HostManaged) yield break;
 			_player = GetComponent<Player>();
 			if (_player == null) {
 				Logger.Warn("[DMD] DmdBridgePlayer must be attached to the same GameObject as Player.");
@@ -137,9 +149,63 @@ namespace VisualPinball.Engine.DMD.Unity
 			Logger.Info("[DMD] Bridge connected to gamelogic display events.");
 		}
 
-		private void OnDestroy()
+		/// <summary>Configures direct resource input; automatic GLE subscriptions and INI polling stay inactive.</summary>
+		public void ConfigureManaged(DmdBridgeSettings settings, GameObject scene, Func<IDestination> presentationDestination, OwnerScheduler ownerScheduler)
 		{
-			RequestSourceFrameFormat(DisplayFrameFormat.Dmd8);
+			if (_pipeline != null) throw new InvalidOperationException("Configure the DMD bridge before starting its pipeline.");
+			_managed = true; _settings = settings.Clone(); _managedScene = scene; _presentationDestination = presentationDestination; _ownerScheduler = ownerScheduler;
+		}
+		public void FeedFrame(in PluginDisplayFrame frame, string displayId)
+		{
+			if (!_managed || _shutdown) return;
+			if (_managedRebuild != null && !_managedRebuild.IsCompleted) return;
+			if (_pipeline != null && (_sourceInstance != frame.Instance || !_pipeline.Matches(new DisplayConfig(displayId, frame.Width, frame.Height)))) {
+				_managedRebuild = ReleaseManagedPipelineAsync();
+				return; // Borrowed pixels cannot outlive this call. The next frame starts the new graph.
+			}
+			EnsurePipeline(new DisplayConfig(displayId, frame.Width, frame.Height), _sourceInstance != 0 && _sourceInstance != frame.Instance);
+			_sourceInstance = frame.Instance;
+			_pipeline?.Push(frame);
+		}
+		private async Task ReleaseManagedPipelineAsync()
+		{
+			var pipeline = _pipeline;
+			await pipeline.StopWorkerAsync().ConfigureAwait(false);
+			await _ownerScheduler.Switch();
+			pipeline.Dispose();
+			if (_pipeline == pipeline) _pipeline = null;
+		}
+		private void OnDestroy() => Shutdown();
+		public Task ShutdownCompletion => _shutdownTask ?? Task.CompletedTask;
+		public async Task ShutdownAsync(CancellationToken cancellation = default)
+		{
+			_shutdownTask ??= ShutdownManagedAsync();
+			if (await Task.WhenAny(_shutdownTask, Task.Delay(Timeout.Infinite, cancellation)) != _shutdownTask) {
+				Shutdown(); // Deferred graph disposal never races the worker.
+				throw new OperationCanceledException(cancellation);
+			}
+			await _shutdownTask;
+		}
+		private async Task ShutdownManagedAsync()
+		{
+			_shutdown = true; enabled = false;
+			if (_managedRebuild != null) await _managedRebuild.ConfigureAwait(false);
+			if (_ownerScheduler != null) await _ownerScheduler.Switch();
+			var pipeline = _pipeline;
+			if (pipeline != null) await pipeline.StopWorkerAsync().ConfigureAwait(false);
+			if (_ownerScheduler != null) await _ownerScheduler.Switch();
+			pipeline?.Dispose(); _pipeline = null;
+		}
+		public void Shutdown()
+		{
+			if (_managed) {
+				_shutdownTask ??= ShutdownManagedAsync();
+				_pipeline?.Dispose();
+				return;
+			}
+			if (_shutdown) { _pipeline?.Dispose(); return; }
+			_shutdown = true; enabled = false;
+			if (!_managed) RequestSourceFrameFormat(DisplayFrameFormat.Dmd8);
 
 			if (_gamelogicEngine != null) {
 				_gamelogicEngine.OnDisplaysRequested -= HandleDisplaysRequested;
@@ -156,6 +222,7 @@ namespace VisualPinball.Engine.DMD.Unity
 			// Drives a host-pumped native window (macOS/SDL) on the main thread; no-op on the
 			// self-driven Windows backend. Must run every frame.
 			_pipeline?.PumpMainThread();
+			if (_managed || PlayerIntegrationMode.HostManaged) return;
 
 			// Settings (component fields + DmdDevice.ini) change rarely; checking ~4x/sec keeps the
 			// per-frame INI File.Exists/GetLastWriteTime stat off the hot path.
@@ -315,6 +382,7 @@ namespace VisualPinball.Engine.DMD.Unity
 
 		private void RequestSourceFrameFormat(DisplayFrameFormat format)
 		{
+			if (_managed) return;
 			if (_gamelogicEngine is IDisplayFrameFormatPreference frameFormatPreference) {
 				frameFormatPreference.RequestDisplayFrameFormat(_settings?.TargetDisplayId ?? _targetDisplayId, format);
 			}
@@ -333,6 +401,7 @@ namespace VisualPinball.Engine.DMD.Unity
 		private List<IDestination> CreateDestinations(DisplayConfig display)
 		{
 			var destinations = new List<IDestination>();
+			if (_presentationDestination != null) destinations.Add(_presentationDestination());
 
 			if (_settings.EnableZeDmd) {
 				try {
@@ -433,7 +502,7 @@ namespace VisualPinball.Engine.DMD.Unity
 			}
 
 			if (_settings.EnableInSceneDisplay) {
-				var inSceneDisplay = InSceneDmdDestination.TryCreate(display);
+				var inSceneDisplay = InSceneDmdDestination.TryCreate(display, _managedScene);
 				if (inSceneDisplay != null) {
 					destinations.Add(inSceneDisplay);
 				}
@@ -723,7 +792,7 @@ namespace VisualPinball.Engine.DMD.Unity
 		}
 	}
 
-	internal sealed class DmdBridgeSettings : IEquatable<DmdBridgeSettings>
+	public sealed class DmdBridgeSettings : IEquatable<DmdBridgeSettings>
 	{
 		public string TargetDisplayId;
 		public bool EnableZeDmd;
@@ -838,14 +907,14 @@ namespace VisualPinball.Engine.DMD.Unity
 		}
 	}
 
-	internal static class DmdBridgeConfig
+	public static class DmdBridgeConfig
 	{
 		private const string EnvConfig = "DMDDEVICE_CONFIG";
 		private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
-		public static DmdBridgeSettings Load(string path, DmdBridgeSettings fallback)
+		public static DmdBridgeSettings Load(string path, DmdBridgeSettings fallback, bool exactPath = false)
 		{
-			var resolvedPath = ResolveConfigPath(path);
+			var resolvedPath = exactPath ? Path.GetFullPath(path) : ResolveConfigPath(path);
 			if (string.IsNullOrWhiteSpace(resolvedPath) || !File.Exists(resolvedPath)) {
 				Logger.Warn($"[DMD] No DmdDevice.ini found at \"{resolvedPath}\"; using component settings.");
 				return fallback.Clone();

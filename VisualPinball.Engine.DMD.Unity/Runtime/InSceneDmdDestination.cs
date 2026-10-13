@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using LibDmd;
 using LibDmd.Frame;
 using LibDmd.Output;
@@ -44,9 +45,9 @@ namespace VisualPinball.Engine.DMD.Unity
 		public Dimensions FixedSize => _size;
 		public bool DmdAllowHdScaling => false;
 
-		public static InSceneDmdDestination TryCreate(DisplayConfig config)
+		public static InSceneDmdDestination TryCreate(DisplayConfig config, GameObject scene = null)
 		{
-			var display = FindDisplay(config.Id);
+			var display = scene != null ? scene.GetComponentsInChildren<DisplayComponent>(true).FirstOrDefault(candidate => candidate.Id == config.Id) : FindDisplay(config.Id);
 			if (display == null) {
 				Logger.Info($"[DMD] No in-scene display found for \"{config.Id}\".");
 				return null;

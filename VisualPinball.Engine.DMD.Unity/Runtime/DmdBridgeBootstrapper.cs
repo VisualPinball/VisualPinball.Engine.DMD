@@ -11,6 +11,7 @@ namespace VisualPinball.Engine.DMD.Unity
 		[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
 		private static void StartWatcher()
 		{
+			if (PlayerIntegrationMode.HostManaged) return;
 			if (_watcher != null) {
 				return;
 			}
@@ -53,6 +54,7 @@ namespace VisualPinball.Engine.DMD.Unity
 
 			private static void Install()
 			{
+				if (PlayerIntegrationMode.HostManaged) return;
 				foreach (var player in Object.FindObjectsByType<Player>(FindObjectsInactive.Include)) {
 					if (player.GetComponent<DmdBridgePlayer>() == null) {
 						player.gameObject.AddComponent<DmdBridgePlayer>();
