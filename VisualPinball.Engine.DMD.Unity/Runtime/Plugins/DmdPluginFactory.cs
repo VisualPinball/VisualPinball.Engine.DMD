@@ -42,7 +42,7 @@ namespace VisualPinball.Engine.DMD.Player
 		}
 		private static PluginSettingsSchema BuildSchema() => new PluginSettingsSchema(1,
 			new PluginSettingsGroup("Colorizations", "Choose an available version for each game. The original library stays unchanged.",
-				new PluginField("AltColorRoot", "Colorization library", SettingKind.Folder) { Default = "", Scope = ConfigurationScope.GlobalAndGame, FullWidth = true, Description = "The altcolor folder containing one folder per ROM. Games can override the global library." },
+				new PluginField("AltColorRoot", "Colorization library", SettingKind.Folder) { Default = "", Scope = ConfigurationScope.GlobalAndGame, FullWidth = true, Description = "The altcolor folder containing one folder per ROM. Leave empty to use the altcolor folder next to DmdDevice.ini or VPinMAME's. Games can override the global library." },
 				Field("Colorization", "Colorization", SettingKind.Choice, "auto", "colorizations"),
 				Field("ColorizationScalerMode", "Scaler", SettingKind.Choice, "None", "scalers"),
 				new PluginField("VniKey", "PAC key", SettingKind.Text) { Default = "", FullWidth = true }),
@@ -82,20 +82,50 @@ namespace VisualPinball.Engine.DMD.Player
 			var choices = new List<PluginChoice>();
 			switch (provider) {
 				case "colorizations":
-					choices.Add(new PluginChoice("auto", "Automatic", "Uses the sole available colorization; multiple versions require a selection.")); choices.Add(new PluginChoice("none", "No colorization"));
-					foreach (var asset in ColorizationCatalog.Read(request.Settings.String("AltColorRoot"), request.Game?.Key ?? "")) choices.Add(new PluginChoice(asset.Id, asset.Label, available: !asset.RequiresKey || request.Settings.String("VniKey").Length > 0, unavailableReason: "A PAC key is required."));
+					choices.Add(new PluginChoice("auto", "Automatic", "Uses the sole available colorization, or what DmdDevice loads from the game folder: Serum first, then pin2dmd.pac with a PAC key, then pin2dmd.pal and .vni. Otherwise select one.")); choices.Add(new PluginChoice("none", "No colorization"));
+					foreach (var asset in ColorizationCatalog.Read(DmdPluginFactory.ColorizationLibrary(request.Settings.String("AltColorRoot")), request.Game?.Key ?? "")) choices.Add(new PluginChoice(asset.Id, asset.Label, available: !asset.RequiresKey || request.Settings.String("VniKey").Length > 0, unavailableReason: "A PAC key is required."));
 					break;
 				case "scalers": foreach (string name in Enum.GetNames(typeof(ScalerMode))) choices.Add(new PluginChoice(name, name)); break;
 				case "matrices": foreach (string name in Enum.GetNames(typeof(ColorMatrix))) choices.Add(new PluginChoice(name, name)); break;
 			}
 			return new PluginChoiceCatalog(string.Join("|", choices.Select(choice => choice.Id)), choices);
 		}
+		/// <summary>The colorization library to use: the configured folder, or the first default altcolor folder that exists.</summary>
+		internal static string ColorizationLibrary(string configured)
+		{
+			if (!string.IsNullOrWhiteSpace(configured)) return configured.Trim();
+			foreach (string candidate in DefaultColorizationLibraries()) {
+				try { if (!string.IsNullOrWhiteSpace(candidate) && Directory.Exists(candidate)) return candidate; } catch (Exception) { }
+			}
+			return "";
+		}
+		/// <summary>
+		/// Where DmdDevice and the standalone DMD bridge look: next to DmdDevice.ini, in VPinMAME's folder (VPM_HOME, or next to a ROM
+		/// folder, since VPinMAME keeps roms and altcolor side by side), then where LibDmd finds it.
+		/// </summary>
+		private static IEnumerable<string> DefaultColorizationLibraries()
+		{
+			string config = null;
+			try { config = DmdBridgeConfig.ResolveEnvConfigPath(); } catch (Exception) { }
+			if (!string.IsNullOrWhiteSpace(config)) yield return Path.Combine(Path.GetDirectoryName(config) ?? "", "altcolor");
+			string home = Environment.GetEnvironmentVariable("VPM_HOME");
+			if (!string.IsNullOrWhiteSpace(home)) yield return Path.Combine(home.Trim().Trim('"'), "altcolor");
+			foreach (string roms in (VisualPinball.Unity.GamelogicPaths.RomFolder ?? "").Split(';')) {
+				if (string.IsNullOrWhiteSpace(roms)) continue;
+				string parent = null;
+				try { parent = Path.GetDirectoryName(Path.GetFullPath(roms.Trim()).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)); } catch (Exception) { }
+				if (parent != null) yield return Path.Combine(parent, "altcolor");
+			}
+			string libDmd = null;
+			try { libDmd = PathUtil.GetVpmFolder("altcolor", "[DMD]"); } catch (Exception) { }
+			yield return libDmd;
+		}
 		public IReadOnlyList<PluginValidationIssue> Validate(PluginChoiceRequest request)
 		{
 			var issues = new List<PluginValidationIssue>();
 			foreach (string field in new[] { "UnlitDot", "GlassColor" }) if (!ColorUtility.TryParseHtmlString(request.Settings.String(field), out _)) issues.Add(new PluginValidationIssue(field, "Enter a color such as #FFAA00."));
 			if (request.Game.HasValue) try {
-				var asset = ColorizationCatalog.Select(request.Settings.String("AltColorRoot"), request.Game.Value.Key, request.Settings.String("Colorization", "auto"));
+				var asset = ColorizationCatalog.Select(DmdPluginFactory.ColorizationLibrary(request.Settings.String("AltColorRoot")), request.Game.Value.Key, request.Settings.String("Colorization", "auto"), request.Settings.String("VniKey").Length > 0);
 				if (asset?.RequiresKey == true && request.Settings.String("VniKey").Length == 0) issues.Add(new PluginValidationIssue("VniKey", "A PAC key is required."));
 			} catch (Exception error) { issues.Add(new PluginValidationIssue("Colorization", error.Message)); }
 			return issues;

@@ -33,6 +33,7 @@ namespace VisualPinball.Engine.DMD.Player
 			if (files.Length > 5000) throw new InvalidOperationException("The game's colorization folder contains too many files.");
 			var assets = new List<ColorizationAsset>();
 			foreach (string file in files.OrderBy(file => file, StringComparer.OrdinalIgnoreCase)) {
+				if (Path.GetFileName(file).StartsWith("._", StringComparison.Ordinal)) continue; // macOS resource forks
 				string extension = Path.GetExtension(file).ToLowerInvariant();
 				if (extension == ".crz" || extension == ".crom" || extension == ".cromc" || extension == ".pac") assets.Add(new ColorizationAsset(Relative(root, file), Path.GetFileNameWithoutExtension(file) + " · " + (extension == ".pac" ? "PAC" : "Serum"), file));
 				if (extension != ".pal") continue;
@@ -42,14 +43,26 @@ namespace VisualPinball.Engine.DMD.Player
 			}
 			return assets;
 		}
+		private static bool InGameFolder(ColorizationAsset asset, string game) => asset.Id.StartsWith(game + "/", StringComparison.OrdinalIgnoreCase) && asset.Id.IndexOf('/', game.Length + 1) < 0;
+		private static bool IsSerum(string file) => Path.GetExtension(file).ToLowerInvariant() is ".crz" or ".crom" or ".cromc";
 		private static string Relative(string root, string file) => Path.GetRelativePath(root, file).Replace('\\', '/');
-		internal static ColorizationAsset Select(string root, string game, string selection)
+		/// <param name="hasPacKey">Whether a PAC key is configured; PAC files only win automatic selection with one.</param>
+		internal static ColorizationAsset Select(string root, string game, string selection, bool hasPacKey = false)
 		{
 			if (selection == "none") return null;
 			var assets = Read(root, game);
 			if (selection == "auto") {
-				if (assets.Count > 1) throw new InvalidOperationException("Several colorizations are available. Select one for this game.");
-				return assets.FirstOrDefault();
+				if (assets.Count <= 1) return assets.FirstOrDefault();
+				// Several: what DmdDevice itself loads from the game folder, like the standalone bridge did. Serum first (the newest
+				// .cRZ, .cROM or .cROMc), then VNI, which prefers pin2dmd.pac over pin2dmd.pal when it can decrypt it.
+				var serum = assets.Where(asset => InGameFolder(asset, game) && IsSerum(asset.Files[0]))
+					.OrderByDescending(asset => File.GetCreationTimeUtc(asset.Files[0])).FirstOrDefault();
+				if (serum != null) return serum;
+				foreach (string standard in hasPacKey ? new[] { "pin2dmd.pac", "pin2dmd.pal" } : new[] { "pin2dmd.pal", "pin2dmd.pac" }) {
+					var match = assets.FirstOrDefault(asset => string.Equals(asset.Id, game + "/" + standard, StringComparison.OrdinalIgnoreCase));
+					if (match != null) return match;
+				}
+				throw new InvalidOperationException("Several colorizations are available. Select one for this game.");
 			}
 			return assets.FirstOrDefault(asset => asset.Id == selection) ?? throw new FileNotFoundException("Selected colorization is missing: " + selection);
 		}

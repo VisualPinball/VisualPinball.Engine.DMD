@@ -34,7 +34,7 @@ namespace VisualPinball.Engine.DMD.Player
 			var scene = game.Capabilities.Require<IUnityGameScene>(UnityPluginCapability.GameScene);
 			var settings = DmdPluginFactory.Settings(game.Settings);
 			settings.RomName = game.Identity.Key;
-			var asset = ColorizationCatalog.Select(game.Settings.String("AltColorRoot"), game.Identity.Key, game.Settings.String("Colorization", "auto"));
+			var asset = ColorizationCatalog.Select(DmdPluginFactory.ColorizationLibrary(game.Settings.String("AltColorRoot")), game.Identity.Key, game.Settings.String("Colorization", "auto"), game.Settings.String("VniKey").Length > 0);
 			settings.EnableColorization = asset != null;
 			if (asset != null) {
 				_nativeResources.Own(ColorizationCatalog.Stage(asset, Path.Combine(_application.Configuration.DirectoryFor(_application.Plugin), "cache", "colorizations"), game.Identity.Key, out string staged));
