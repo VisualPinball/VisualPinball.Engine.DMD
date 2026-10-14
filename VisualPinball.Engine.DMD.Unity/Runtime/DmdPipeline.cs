@@ -32,7 +32,7 @@ namespace VisualPinball.Engine.DMD.Unity
 	/// thread (a host-pumped native window) re-marshal back to the main thread themselves:
 	/// the in-scene destination via its own frame pump, the host-pumped window via <see cref="PumpMainThread"/>.
 	/// </remarks>
-	internal sealed class DmdPipeline : IDisposable
+	internal sealed class DmdPipeline : IManagedDmdPipeline
 	{
 		private readonly DisplayConfig _display;
 		private readonly VpeGleSource _source;
@@ -95,6 +95,12 @@ namespace VisualPinball.Engine.DMD.Unity
 				&& _display.Width == display.Width
 				&& _display.Height == display.Height
 				&& _display.FlipX == display.FlipX;
+		}
+
+		public bool Matches(string displayId, int width, int height)
+		{
+			return string.Equals(_display.Id, displayId, StringComparison.OrdinalIgnoreCase)
+				&& _display.Width == width && _display.Height == height;
 		}
 
 		/// <summary>Called on the Unity main thread. Copies the frame and signals the worker.</summary>

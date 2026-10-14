@@ -107,8 +107,7 @@ namespace VisualPinball.Engine.DMD.Unity
 		private Func<IDestination> _presentationDestination;
 		private OwnerScheduler _ownerScheduler;
 		private Task _shutdownTask;
-		private Task _managedRebuild;
-		private long _sourceInstance;
+		private ManagedDmdInput _managedInput;
 		private DmdPipeline _pipeline;
 		private DisplayConfig _currentDisplay;
 		private DmdBridgeSettings _settings;
@@ -156,30 +155,19 @@ namespace VisualPinball.Engine.DMD.Unity
 		}
 
 		/// <summary>Configures direct resource input; automatic GLE subscriptions and INI polling stay inactive.</summary>
-		public void ConfigureManaged(DmdBridgeSettings settings, GameObject scene, Func<IDestination> presentationDestination, OwnerScheduler ownerScheduler)
+		public void ConfigureManaged(DmdBridgeSettings settings, GameObject scene, Func<IDestination> presentationDestination, OwnerScheduler ownerScheduler, Func<long, bool> sourceIsCurrent = null)
 		{
 			if (_pipeline != null) throw new InvalidOperationException("Configure the DMD bridge before starting its pipeline.");
 			_managed = true; _settings = settings.Clone(); _managedScene = scene; _presentationDestination = presentationDestination; _ownerScheduler = ownerScheduler;
+			_managedInput = new ManagedDmdInput(ownerScheduler, (displayId, width, height) => {
+				EnsurePipeline(new DisplayConfig(displayId, width, height), force: true);
+				return _pipeline;
+			}, sourceIsCurrent, error => Logger.Warn(error, "[DMD] Could not replace the display graph; the next frame will retry."));
 		}
 		public void FeedFrame(in PluginDisplayFrame frame, string displayId)
 		{
 			if (!_managed || _shutdown) return;
-			if (_managedRebuild != null && !_managedRebuild.IsCompleted) return;
-			if (_pipeline != null && (_sourceInstance != frame.Instance || !_pipeline.Matches(new DisplayConfig(displayId, frame.Width, frame.Height)))) {
-				_managedRebuild = ReleaseManagedPipelineAsync();
-				return; // Borrowed pixels cannot outlive this call. The next frame starts the new graph.
-			}
-			EnsurePipeline(new DisplayConfig(displayId, frame.Width, frame.Height), _sourceInstance != 0 && _sourceInstance != frame.Instance);
-			_sourceInstance = frame.Instance;
-			_pipeline?.Push(frame);
-		}
-		private async Task ReleaseManagedPipelineAsync()
-		{
-			var pipeline = _pipeline;
-			await pipeline.StopWorkerAsync().ConfigureAwait(false);
-			await _ownerScheduler.Switch();
-			pipeline.Dispose();
-			if (_pipeline == pipeline) _pipeline = null;
+			_managedInput.Feed(frame, displayId);
 		}
 		private void OnDestroy() => Shutdown();
 		public Task ShutdownCompletion => _shutdownTask ?? Task.CompletedTask;
@@ -195,7 +183,12 @@ namespace VisualPinball.Engine.DMD.Unity
 		private async Task ShutdownManagedAsync()
 		{
 			_shutdown = true; enabled = false;
-			if (_managedRebuild != null) await _managedRebuild.ConfigureAwait(false);
+			if (_managedInput != null) {
+				await _managedInput.ShutdownAsync().ConfigureAwait(false);
+				await _ownerScheduler.Switch();
+				_pipeline = null;
+				return;
+			}
 			if (_ownerScheduler != null) await _ownerScheduler.Switch();
 			var pipeline = _pipeline;
 			if (pipeline != null) await pipeline.StopWorkerAsync().ConfigureAwait(false);
@@ -206,7 +199,6 @@ namespace VisualPinball.Engine.DMD.Unity
 		{
 			if (_managed) {
 				_shutdownTask ??= ShutdownManagedAsync();
-				_pipeline?.Dispose();
 				return;
 			}
 			if (_shutdown) { _pipeline?.Dispose(); return; }
@@ -227,7 +219,7 @@ namespace VisualPinball.Engine.DMD.Unity
 		{
 			// Drives a host-pumped native window (macOS/SDL) on the main thread; no-op on the
 			// self-driven Windows backend. Must run every frame.
-			_pipeline?.PumpMainThread();
+			(_managed ? _managedInput?.Pipeline as DmdPipeline : _pipeline)?.PumpMainThread();
 			if (_managed || PlayerIntegrationMode.HostManaged) return;
 
 			// Settings (component fields + DmdDevice.ini) change rarely; checking ~4x/sec keeps the

@@ -42,7 +42,7 @@ namespace VisualPinball.Engine.DMD.Player
 		}
 		private static PluginSettingsSchema BuildSchema() => new PluginSettingsSchema(1,
 			new PluginSettingsGroup("Colorizations", "Choose an available version for each game. The original library stays unchanged.",
-				new PluginField("AltColorRoot", "Colorization library", SettingKind.Folder) { Default = "", FullWidth = true, Description = "The altcolor folder containing one folder per ROM." },
+				new PluginField("AltColorRoot", "Colorization library", SettingKind.Folder) { Default = "", Scope = ConfigurationScope.GlobalAndGame, FullWidth = true, Description = "The altcolor folder containing one folder per ROM. Games can override the global library." },
 				Field("Colorization", "Colorization", SettingKind.Choice, "auto", "colorizations"),
 				Field("ColorizationScalerMode", "Scaler", SettingKind.Choice, "None", "scalers"),
 				new PluginField("VniKey", "PAC key", SettingKind.Text) { Default = "", FullWidth = true }),
@@ -105,9 +105,12 @@ namespace VisualPinball.Engine.DMD.Player
 			if (action != "import-ini") return Task.FromResult(new PluginActionResult(false, "Unknown DMD action."));
 			string path = request.Settings.String("ImportPath");
 			if (!File.Exists(path)) return Task.FromResult(new PluginActionResult(false, "Choose an existing DmdDevice.ini."));
-			var settings = DmdBridgeConfig.Load(path, Settings(Schema.Defaults()), true);
+			var fallback = Settings(Schema.Defaults());
+			fallback.RomName = request.Game?.Key;
+			var settings = DmdBridgeConfig.Load(path, fallback, true);
 			var values = JObject.FromObject(settings); values["UnlitDot"] = "#" + ColorUtility.ToHtmlStringRGB(settings.UnlitDot); values["GlassColor"] = "#" + ColorUtility.ToHtmlStringRGB(settings.GlassColor);
-			values["AltColorRoot"] = settings.AltColorPath ?? ""; values["Colorization"] = settings.EnableColorization ? "auto" : "none";
+			if (!string.IsNullOrWhiteSpace(settings.AltColorPath)) values["AltColorRoot"] = settings.AltColorPath;
+			values["Colorization"] = settings.EnableColorization ? "auto" : "none";
 			return Task.FromResult(new PluginActionResult(true, "Imported into the draft. Review the values and Apply to save.", new PluginSettingsSnapshot(1, values)));
 		}
 	}
