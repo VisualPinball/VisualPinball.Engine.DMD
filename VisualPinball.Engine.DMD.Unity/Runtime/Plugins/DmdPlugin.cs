@@ -54,7 +54,7 @@ namespace VisualPinball.Engine.DMD.Player
 				_application.Scheduler.VerifyOwner();
 				var destination = new DmdPresentationDestination(_application, _binding.Descriptor);
 				_presentations.RemoveAll(presentation => !presentation.IsAvailable); _presentations.Add(destination); _dispatch = _presentations.ToArray(); return destination;
-			}, _application.Scheduler);
+			}, _application.Scheduler, instance => _binding.State == ResourceBindingState.Bound && _binding.Descriptor?.Instance == instance);
 			game.Lifetime.Own(_binding.SubscribeFrames(frame => {
 				if (_bridge != null) _bridge.FeedFrame(frame, _binding.Descriptor.Id.Substring(_binding.Descriptor.Id.LastIndexOf('/') + 1));
 			}));
