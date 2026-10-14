@@ -34,10 +34,26 @@ namespace VisualPinball.Engine.DMD.Tests
 		[Test]
 		public void AmbiguousAutomaticAndMissingManualChoicesNeverFallBack()
 		{
-			Asset("game/one.crz"); Asset("game/two.crz");
+			// Variants in subfolders aren't what DmdDevice loads, so automatic selection refuses to guess.
+			Asset("game/one/game.crz"); Asset("game/two/game.crz");
 			Assert.Throws<InvalidOperationException>(() => ColorizationCatalog.Select(_root, "game", "auto"));
 			Assert.Throws<FileNotFoundException>(() => ColorizationCatalog.Select(_root, "game", "game/missing.crz"));
 			Assert.That(ColorizationCatalog.Select(_root, "game", "none"), Is.Null);
+		}
+		[Test]
+		public void AmbiguousAutomaticPrefersTheFilesDmdDeviceLoads()
+		{
+			Asset("game/pin2dmd.pal"); Asset("game/pin2dmd.vni"); Asset("game/old/pin2dmd.pal"); Asset("game/old/pin2dmd.vni"); Asset("game/update.pac"); Asset("game/pin2dmd - Copy.pal"); Asset("game/old/._pin2dmd.pal");
+			Assert.That(ColorizationCatalog.Select(_root, "game", "auto").Id, Is.EqualTo("game/pin2dmd.pal"));
+			Assert.That(ColorizationCatalog.Read(_root, "game").Any(asset => asset.Id.Contains("._")), Is.False, "macOS resource forks are not colorizations");
+			Asset("game/pin2dmd.pac");
+			Assert.That(ColorizationCatalog.Select(_root, "game", "auto").Id, Is.EqualTo("game/pin2dmd.pal"), "a PAC without key can't be decrypted");
+			Assert.That(ColorizationCatalog.Select(_root, "game", "auto", hasPacKey: true).Id, Is.EqualTo("game/pin2dmd.pac"));
+			Asset("game/old/other.cRZ");
+			Assert.That(ColorizationCatalog.Select(_root, "game", "auto").Id, Is.EqualTo("game/pin2dmd.pal"), "Serum only counts in the game folder itself");
+			Asset("game/older.cROM"); File.SetCreationTimeUtc(Path.Combine(_root, "game/older.cROM"), new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+			Asset("game/newer.cROMc");
+			Assert.That(ColorizationCatalog.Select(_root, "game", "auto").Id, Is.EqualTo("game/newer.cROMc"), "the newest Serum file wins, like the bridge");
 		}
 		[Test]
 		public void StagingContainsOnlySelectedVariantAndReleasesOwnedCopies()
