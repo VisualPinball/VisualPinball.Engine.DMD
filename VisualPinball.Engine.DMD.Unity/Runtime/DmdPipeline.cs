@@ -60,6 +60,8 @@ namespace VisualPinball.Engine.DMD.Unity
 		private bool _disposed;
 
 		private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+		private static readonly LogThrottle FrameFailureThrottle = new LogThrottle(3, TimeSpan.FromSeconds(30));
+		private static readonly LogThrottle RenderGraphErrorThrottle = new LogThrottle(3, TimeSpan.FromSeconds(30));
 
 		public DmdPipeline(DisplayConfig display, List<IDestination> destinations, AbstractConverter converter, bool flipHorizontally)
 		{
@@ -73,7 +75,11 @@ namespace VisualPinball.Engine.DMD.Unity
 				Converter = converter,
 				FlipHorizontally = display.FlipX ^ flipHorizontally,
 			};
-			_renderer = _renderGraph.Init().StartRendering(null, exception => Logger.Warn(exception, "[DMD] RenderGraph reported an error."));
+			_renderer = _renderGraph.Init().StartRendering(null, exception => {
+				if (RenderGraphErrorThrottle.ShouldLog(out var suppressed)) {
+					Logger.Warn(exception, "[DMD] RenderGraph reported an error ({Suppressed} suppressed).", suppressed);
+				}
+			});
 
 			foreach (var destination in destinations) {
 				if (destination is INativeDmdWindow window && window.RequiresHostPump) {
@@ -222,7 +228,10 @@ namespace VisualPinball.Engine.DMD.Unity
 								_source.Push(format, _work, length);
 							}
 						} catch (Exception exception) {
-							Logger.Warn(exception, "[DMD] DMD worker failed to render a frame.");
+							// runs per frame on the worker: a broken device would otherwise flood the log
+							if (FrameFailureThrottle.ShouldLog(out var suppressed)) {
+								Logger.Warn(exception, "[DMD] DMD worker failed to render a frame for {Display} ({Suppressed} suppressed).", _display.Id, suppressed);
+							}
 						}
 
 						if (!doClear && !doFrame) {

@@ -15,15 +15,18 @@ using LibDmd.Common;
 using LibDmd.Output.Pixelcade;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json;
+using NLog;
 using UnityEngine;
 using VisualPinball.Engine.DMD.Unity;
 using VisualPinball.Plugins;
+using Logger = NLog.Logger;
 
 namespace VisualPinball.Engine.DMD.Player
 {
 	internal sealed class DmdPluginFactory : IPlayerPluginFactory, IPluginSettingsProvider
 	{
 		internal const string Id = "org.visualpinball.dmd";
+		private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 		public PluginDescriptor Descriptor { get; } = new PluginDescriptor(Id, "DMD", "Colorizations, your in-scene DMD and native displays, with optional cabinet hardware.") { EnabledByDefault = true, Category = "Displays", Order = 20 };
 		public PluginSettingsSchema Schema { get; } = BuildSchema();
 		public IPluginSettingsProvider SettingsProvider => this;
@@ -95,7 +98,7 @@ namespace VisualPinball.Engine.DMD.Player
 		{
 			if (!string.IsNullOrWhiteSpace(configured)) return configured.Trim();
 			foreach (string candidate in DefaultColorizationLibraries()) {
-				try { if (!string.IsNullOrWhiteSpace(candidate) && Directory.Exists(candidate)) return candidate; } catch (Exception) { }
+				try { if (!string.IsNullOrWhiteSpace(candidate) && Directory.Exists(candidate)) return candidate; } catch (Exception error) { Logger.Debug(error, "[DMD] Skipping colorization library candidate {Path:l}.", candidate); }
 			}
 			return "";
 		}
@@ -106,18 +109,18 @@ namespace VisualPinball.Engine.DMD.Player
 		private static IEnumerable<string> DefaultColorizationLibraries()
 		{
 			string config = null;
-			try { config = DmdBridgeConfig.ResolveEnvConfigPath(); } catch (Exception) { }
+			try { config = DmdBridgeConfig.ResolveEnvConfigPath(); } catch (Exception error) { Logger.Debug(error, "[DMD] Could not resolve DMDDEVICE_CONFIG."); }
 			if (!string.IsNullOrWhiteSpace(config)) yield return Path.Combine(Path.GetDirectoryName(config) ?? "", "altcolor");
 			string home = Environment.GetEnvironmentVariable("VPM_HOME");
 			if (!string.IsNullOrWhiteSpace(home)) yield return Path.Combine(home.Trim().Trim('"'), "altcolor");
 			foreach (string roms in (VisualPinball.Unity.GamelogicPaths.RomFolder ?? "").Split(';')) {
 				if (string.IsNullOrWhiteSpace(roms)) continue;
 				string parent = null;
-				try { parent = Path.GetDirectoryName(Path.GetFullPath(roms.Trim()).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)); } catch (Exception) { }
+				try { parent = Path.GetDirectoryName(Path.GetFullPath(roms.Trim()).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)); } catch (Exception error) { Logger.Debug(error, "[DMD] Skipping ROM folder {Path:l}.", roms); }
 				if (parent != null) yield return Path.Combine(parent, "altcolor");
 			}
 			string libDmd = null;
-			try { libDmd = PathUtil.GetVpmFolder("altcolor", "[DMD]"); } catch (Exception) { }
+			try { libDmd = PathUtil.GetVpmFolder("altcolor", "[DMD]"); } catch (Exception error) { Logger.Debug(error, "[DMD] Could not locate VPinMAME's altcolor folder."); }
 			yield return libDmd;
 		}
 		public IReadOnlyList<PluginValidationIssue> Validate(PluginChoiceRequest request)
