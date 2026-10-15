@@ -18,6 +18,7 @@ namespace VisualPinball.Engine.DMD.Player
 	internal sealed class DmdPresentationDestination : IRgb24Destination
 	{
 		private static long _instances;
+		private static readonly VisualPinball.Unity.LogThrottle FaultThrottle = new VisualPinball.Unity.LogThrottle(3, TimeSpan.FromSeconds(30));
 		private readonly DisplayResourceSource _source;
 		private readonly IDisposable _publication;
 		private readonly long _instance;
@@ -31,7 +32,13 @@ namespace VisualPinball.Engine.DMD.Player
 		internal DmdPresentationDestination(PluginApplicationContext application, PluginResourceDescriptor original)
 		{
 			_instance = Interlocked.Increment(ref _instances);
-			_source = new DisplayResourceSource(fault: error => application.Log(error.Message));
+			_source = new DisplayResourceSource(fault: error => {
+				// a consumer of the presentation frames threw: a bug, and it would throw on every frame
+				// plugin messages are plain text and reports group them by text, so keep it constant
+				if (FaultThrottle.ShouldLog()) {
+					application.Logger.Error(error, "A consumer of the DMD presentation failed.");
+				}
+			});
 			_publication = application.Resources.Publish(new PluginResourceDescriptor(original.Id + "/presentation/" + application.Plugin.Id, application.Plugin.Id,
 				original.Controller, original.Label + " · DMD presentation", original.Role, ResourceKind.Display, original.Session, _instance, ResourceView.Presentation, DisplayEncoding.Rgb24, original.Id), _source);
 		}

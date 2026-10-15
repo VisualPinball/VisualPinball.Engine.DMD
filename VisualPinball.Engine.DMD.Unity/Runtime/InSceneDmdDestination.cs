@@ -55,11 +55,11 @@ namespace VisualPinball.Engine.DMD.Unity
 		{
 			var display = scene != null ? scene.GetComponentsInChildren<DisplayComponent>(true).FirstOrDefault(candidate => candidate.Id == config.Id) : FindDisplay(config.Id);
 			if (display == null) {
-				Logger.Info($"[DMD] No in-scene display found for \"{config.Id}\".");
+				Logger.Info("[DMD] No in-scene display found for {DisplayId}.", config.Id);
 				return null;
 			}
 
-			Logger.Info($"[DMD] In-scene display destination connected for \"{config.Id}\".");
+			Logger.Info("[DMD] In-scene display destination connected for {DisplayId}.", config.Id);
 			return new InSceneDmdDestination(display, config);
 		}
 

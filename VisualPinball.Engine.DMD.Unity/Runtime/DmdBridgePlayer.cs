@@ -9,6 +9,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Reflection;
 using System.Threading.Tasks;
 using System.Threading;
 using LibDmd;
@@ -37,7 +38,7 @@ namespace VisualPinball.Engine.DMD.Unity
 	/// Bridges VPE gamelogic display events into LibDmd's RenderGraph.
 	/// </summary>
 	[AddComponentMenu("Pinball/DMD/DMD Bridge Player")]
-	public class DmdBridgePlayer : MonoBehaviour
+	public class DmdBridgePlayer : MonoBehaviour, IDiagnosticsSource
 	{
 		[Header("Source")]
 		[SerializeField] private string _targetDisplayId = "dmd0";
@@ -124,6 +125,11 @@ namespace VisualPinball.Engine.DMD.Unity
 		private string _defaultAltColorPath;
 		private float _nextSettingsCheckTime;
 
+		// kept for diagnostics
+		private string _colorization = "not resolved yet";
+		private string _serumLibraryVersion;
+		private string _destinationNames = "";
+
 		private const float SettingsCheckInterval = 0.25f;
 
 		private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
@@ -151,7 +157,8 @@ namespace VisualPinball.Engine.DMD.Unity
 			_gamelogicEngine.OnDisplaysRequested += HandleDisplaysRequested;
 			_gamelogicEngine.OnDisplayClear += HandleDisplayClear;
 			_gamelogicEngine.OnDisplayUpdateFrame += HandleDisplayUpdateFrame;
-			Logger.Info("[DMD] Bridge connected to gamelogic display events.");
+			Logger.Info("[DMD] Bridge connected to the display events of {Engine}.", _gamelogicEngine.Name);
+			PublishDiagnostics();
 		}
 
 		/// <summary>Configures direct resource input; automatic GLE subscriptions and INI polling stay inactive.</summary>
@@ -283,10 +290,10 @@ namespace VisualPinball.Engine.DMD.Unity
 			if (_pipeline == null) {
 				if (_currentDisplay == null) {
 					if (TryInferDisplayConfig(frame, out var inferredDisplay)) {
-						Logger.Info($"[DMD] Inferred display \"{inferredDisplay.Id}\" as {inferredDisplay.Width}x{inferredDisplay.Height} from frame stream.");
+						Logger.Info("[DMD] Inferred display {DisplayId} as {Width}x{Height} from the frame stream.", inferredDisplay.Id, inferredDisplay.Width, inferredDisplay.Height);
 						EnsurePipeline(inferredDisplay);
 					} else if (!_missingDisplayWarningLogged) {
-						Logger.Warn($"[DMD] Got frame for \"{frame.Id}\" before display dimensions were requested and could not infer dimensions from {frame.Data?.Length ?? 0} byte(s).");
+						Logger.Warn("[DMD] Got a frame for {DisplayId} before its dimensions were requested, and could not infer them from {Length} byte(s).", frame.Id, frame.Data?.Length ?? 0);
 						_missingDisplayWarningLogged = true;
 					}
 				}
@@ -365,9 +372,11 @@ namespace VisualPinball.Engine.DMD.Unity
 			_pipeline?.Dispose();
 			CaptureAppliedSettings();
 			var destinations = CreateDestinations(display);
+			_destinationNames = DestinationNames(destinations);
 			if (destinations.Count == 0) {
-				Logger.Warn("[DMD] No DMD destinations are available; bridge will ignore frames.");
+				Logger.Warn("[DMD] No DMD destinations are available, the bridge will ignore frames.");
 				_pipeline = null;
+				PublishDiagnostics();
 				return;
 			}
 
@@ -375,7 +384,24 @@ namespace VisualPinball.Engine.DMD.Unity
 			_resolvedConverter = converter?.Name ?? "none";
 			RequestSourceFrameFormat(converter != null ? DisplayFrameFormat.Dmd4 : DisplayFrameFormat.Dmd8);
 			_pipeline = new DmdPipeline(display, destinations, converter, _settings.FlipHorizontally);
-			Logger.Info($"[DMD] Pipeline for \"{display.Id}\" created with {destinations.Count} destination(s).");
+			Logger.Info("[DMD] Pipeline for {DisplayId} ({Width}x{Height}) created with {Count} destination(s): {Destinations:l}, colorization: {Colorization:l}.",
+				display.Id, display.Width, display.Height, destinations.Count, _destinationNames, _colorization);
+			PublishDiagnostics();
+		}
+
+		private static string DestinationNames(List<IDestination> destinations)
+		{
+			var names = new List<string>(destinations.Count);
+			foreach (var destination in destinations) {
+				string name;
+				try {
+					name = destination.Name;
+				} catch (Exception) {
+					name = null;
+				}
+				names.Add(string.IsNullOrEmpty(name) ? destination.GetType().Name : name);
+			}
+			return string.Join(", ", names);
 		}
 
 		private void RequestSourceFrameFormat(DisplayFrameFormat format)
@@ -407,7 +433,7 @@ namespace VisualPinball.Engine.DMD.Unity
 					if (zeDmd.IsAvailable) {
 						destinations.Add(zeDmd);
 					} else {
-						Logger.Info("[DMD] ZeDMD destination not available.");
+						Logger.Warn("[DMD] ZeDMD is enabled, but no device is available.");
 						zeDmd.Dispose();
 					}
 				} catch (Exception exception) {
@@ -423,7 +449,7 @@ namespace VisualPinball.Engine.DMD.Unity
 					if (pinDmd3.IsAvailable) {
 						destinations.Add(pinDmd3);
 					} else {
-						Logger.Info("[DMD] PinDMD3 destination not available.");
+						Logger.Warn("[DMD] PinDMD3 is enabled, but no device is available.");
 						pinDmd3.Dispose();
 					}
 				} catch (Exception exception) {
@@ -439,7 +465,7 @@ namespace VisualPinball.Engine.DMD.Unity
 					if (pixelcade.IsAvailable) {
 						destinations.Add(pixelcade);
 					} else {
-						Logger.Info("[DMD] Pixelcade destination not available.");
+						Logger.Warn("[DMD] Pixelcade is enabled, but no device is available.");
 						pixelcade.Dispose();
 					}
 				} catch (Exception exception) {
@@ -453,7 +479,7 @@ namespace VisualPinball.Engine.DMD.Unity
 					if (pin2Dmd.IsAvailable) {
 						destinations.Add(pin2Dmd);
 					} else {
-						Logger.Info("[DMD] PIN2DMD destination not available.");
+						Logger.Warn("[DMD] PIN2DMD is enabled, but no device is available.");
 						pin2Dmd.Dispose();
 					}
 				} catch (Exception exception) {
@@ -467,7 +493,7 @@ namespace VisualPinball.Engine.DMD.Unity
 					if (pinDmd2.IsAvailable) {
 						destinations.Add(pinDmd2);
 					} else {
-						Logger.Info("[DMD] PinDMDv2 destination not available.");
+						Logger.Warn("[DMD] PinDMDv2 is enabled, but no device is available.");
 						pinDmd2.Dispose();
 					}
 				} catch (Exception exception) {
@@ -481,7 +507,7 @@ namespace VisualPinball.Engine.DMD.Unity
 					if (pinDmd1.IsAvailable) {
 						destinations.Add(pinDmd1);
 					} else {
-						Logger.Info("[DMD] PinDMDv1 destination not available.");
+						Logger.Warn("[DMD] PinDMDv1 is enabled, but no device is available.");
 						pinDmd1.Dispose();
 					}
 				} catch (Exception exception) {
@@ -511,13 +537,16 @@ namespace VisualPinball.Engine.DMD.Unity
 
 		private AbstractConverter CreateConverter()
 		{
+			_serumLibraryVersion = null;
 			if (!_settings.EnableColorization) {
 				Logger.Info("[DMD] Colorization disabled.");
+				_colorization = "disabled";
 				return null;
 			}
 
 			if (string.IsNullOrWhiteSpace(_settings.AltColorPath) || string.IsNullOrWhiteSpace(_settings.RomName)) {
-				Logger.Info($"[DMD] Colorization enabled, but missing altcolor path or ROM name. AltColorPath=\"{_settings.AltColorPath}\", RomName=\"{_settings.RomName}\".");
+				Logger.Warn("[DMD] Colorization is enabled, but the altcolor path ({AltColorPath:l}) or the ROM name ({RomName}) is missing.", _settings.AltColorPath ?? "", _settings.RomName ?? "");
+				_colorization = "none (altcolor path or ROM name missing)";
 				return null;
 			}
 
@@ -527,38 +556,55 @@ namespace VisualPinball.Engine.DMD.Unity
 				try {
 					var serum = new Serum(_settings.AltColorPath, _settings.RomName, _settings.ColorizationScalerMode);
 					if (serum.IsLoaded) {
-						Logger.Info($"[DMD] Serum colorization loaded ({serum.ColorizationVersion}).");
+						_serumLibraryVersion = SerumLibraryVersion();
+						_colorization = "Serum " + serum.ColorizationVersion;
+						Logger.Info("[DMD] Serum {Format} colorization loaded for {RomName} (libserum {Version}).", serum.ColorizationVersion, _settings.RomName, _serumLibraryVersion ?? "unknown");
 						return serum;
 					}
 
 					serum.Dispose();
-					Logger.Info($"[DMD] Serum files were found for \"{_settings.RomName}\", but no Serum colorization was loaded.");
+					Logger.Warn("[DMD] Serum files were found for {RomName}, but no Serum colorization was loaded.", _settings.RomName);
 				} catch (Exception exception) {
-					Logger.Warn(exception, "[DMD] Could not initialize Serum colorization.");
+					Logger.Warn(exception, "[DMD] Could not initialize Serum colorization for {RomName}.", _settings.RomName);
 				}
 			} else {
-				Logger.Info($"[DMD] No Serum files found for \"{_settings.RomName}\".");
+				Logger.Info("[DMD] No Serum files found for {RomName}.", _settings.RomName);
 			}
 
 			try {
 				var loader = new VniLoader(_settings.AltColorPath, _settings.RomName);
 				if (!loader.FilesExist) {
-					Logger.Info($"[DMD] Colorization was requested, but no Serum/VNI/PAL/PAC files were found for \"{_settings.RomName}\".");
+					Logger.Info("[DMD] Colorization was requested, but no Serum/VNI/PAL/PAC files were found for {RomName}.", _settings.RomName);
+					_colorization = "none (no colorization files found)";
 					return null;
 				}
 
 				loader.Load(string.IsNullOrWhiteSpace(_settings.VniKey) ? null : _settings.VniKey);
 				if (loader.Pal == null) {
-					Logger.Info($"[DMD] VNI/PAL/PAC colorization was found for \"{_settings.RomName}\" but no palette was loaded.");
+					Logger.Warn("[DMD] VNI/PAL/PAC colorization was found for {RomName}, but no palette was loaded.", _settings.RomName);
+					_colorization = "none (VNI/PAL/PAC found, but no palette loaded)";
 					return null;
 				}
 
-				Logger.Info($"[DMD] VNI/PAL/PAC colorization loaded for \"{_settings.RomName}\".");
+				Logger.Info("[DMD] VNI/PAL/PAC colorization loaded for {RomName}.", _settings.RomName);
+				_colorization = loader.Vni != null ? "VNI/PAL" : "PAL";
 				return new VniColorizer(loader.Pal, loader.Vni) {
 					ScalerMode = _settings.ColorizationScalerMode
 				};
 			} catch (Exception exception) {
-				Logger.Warn(exception, "[DMD] Could not initialize VNI/PAL/PAC colorization.");
+				Logger.Warn(exception, "[DMD] Could not initialize VNI/PAL/PAC colorization for {RomName}.", _settings.RomName);
+				_colorization = "none (VNI/PAL/PAC failed to load)";
+				return null;
+			}
+		}
+
+		private static string SerumLibraryVersion()
+		{
+			try {
+				return Serum.GetVersion();
+			} catch (Exception exception) {
+				// only for diagnostics: the colorization itself is already loaded
+				Logger.Debug(exception, "[DMD] Could not read the libserum version.");
 				return null;
 			}
 		}
@@ -580,13 +626,13 @@ namespace VisualPinball.Engine.DMD.Unity
 		{
 			var gamePath = Path.Combine(altColorPath, romName);
 			if (!Directory.Exists(gamePath)) {
-				Logger.Info($"[DMD] Colorization folder not found: \"{gamePath}\".");
+				Logger.Info("[DMD] Colorization folder not found: {Path:l}", gamePath);
 				return;
 			}
 
 			try {
 				var files = Directory.GetFiles(gamePath);
-				Logger.Info($"[DMD] Looking for colorization in \"{gamePath}\" ({files.Length} file(s)).");
+				Logger.Info("[DMD] Looking for colorization in {Path:l} ({Count} file(s)).", gamePath, files.Length);
 				foreach (var file in files) {
 					var extension = Path.GetExtension(file);
 					if (string.Equals(extension, ".crz", StringComparison.OrdinalIgnoreCase)
@@ -595,11 +641,11 @@ namespace VisualPinball.Engine.DMD.Unity
 						|| string.Equals(extension, ".pal", StringComparison.OrdinalIgnoreCase)
 						|| string.Equals(extension, ".vni", StringComparison.OrdinalIgnoreCase)
 						|| string.Equals(extension, ".pac", StringComparison.OrdinalIgnoreCase)) {
-						Logger.Info($"[DMD] Colorization candidate: {Path.GetFileName(file)}");
+						Logger.Debug("[DMD] Colorization candidate: {File:l}", Path.GetFileName(file));
 					}
 				}
 			} catch (Exception exception) {
-				Logger.Warn(exception, $"[DMD] Could not inspect colorization folder \"{gamePath}\".");
+				Logger.Warn(exception, "[DMD] Could not inspect colorization folder {Path:l}.", gamePath);
 			}
 		}
 
@@ -652,7 +698,7 @@ namespace VisualPinball.Engine.DMD.Unity
 			var writeTimeUtc = File.Exists(configPath) ? File.GetLastWriteTimeUtc(configPath) : DateTime.MinValue;
 			if (!File.Exists(configPath)) {
 				if (!_missingConfigWarningLogged && !DmdBridgeConfig.IsDefaultConfigPath(_dmdDeviceIniPath)) {
-					Logger.Info($"[DMD] No DmdDevice.ini found at \"{configPath}\"; using component settings.");
+					Logger.Info("[DMD] No DmdDevice.ini found at {Path:l}, using component settings.", configPath);
 					_missingConfigWarningLogged = true;
 				}
 				_lastFallbackSettings = fallback.Clone();
@@ -724,6 +770,50 @@ namespace VisualPinball.Engine.DMD.Unity
 			_defaultAltColorPathResolved = true;
 			return _defaultAltColorPath;
 		}
+
+		#region Diagnostics
+
+		public string DiagnosticsSection => "DMD";
+
+		/// <summary>
+		/// The source published as the "DMD" section. The plugin sets itself here so its own
+		/// settings are part of it; it describes this bridge as part of its section.
+		/// </summary>
+		public IDiagnosticsSource DiagnosticsOwner { get; set; }
+
+		private void PublishDiagnostics()
+		{
+			DiagnosticsContext.Set(DiagnosticsOwner ?? this);
+		}
+
+		public void Describe(DiagnosticsWriter writer)
+		{
+			writer.Add("mode", _managed ? "plugin" : "component");
+			if (!_managed) {
+				writer.Add("gamelogic-engine", _gamelogicEngine?.Name ?? "none");
+				var configPath = _appliedConfigPath ?? DmdBridgeConfig.ResolveConfigPath(_dmdDeviceIniPath);
+				writer.Add("dmddevice-ini", configPath ?? "");
+				writer.Add("dmddevice-ini.exists", !string.IsNullOrEmpty(configPath) && File.Exists(configPath));
+			}
+			writer.Add("rom", _settings?.RomName ?? "");
+			writer.Add("display", _currentDisplay != null ? $"{_currentDisplay.Id} {_currentDisplay.Width}x{_currentDisplay.Height}" : "none yet");
+			writer.Add("pipeline", _pipeline != null || _managedInput?.Pipeline != null ? "running" : "none");
+			writer.Add("destinations", _destinationNames);
+			writer.Add("altcolor-path", _settings?.AltColorPath ?? "");
+			writer.Add("colorization", _colorization);
+			if (_serumLibraryVersion != null) {
+				writer.Add("libserum-version", _serumLibraryVersion);
+			}
+			// as a plugin, the plugin writes the settings it was given
+			if (_settings != null && !_managed) {
+				// VniKey is redacted by AddSetting
+				foreach (var field in typeof(DmdBridgeSettings).GetFields(BindingFlags.Public | BindingFlags.Instance)) {
+					writer.AddSetting("setting." + field.Name, field.GetValue(_settings));
+				}
+			}
+		}
+
+		#endregion
 
 		private void SyncNativeWindowLayout()
 		{
@@ -914,7 +1004,7 @@ namespace VisualPinball.Engine.DMD.Unity
 		{
 			var resolvedPath = exactPath ? Path.GetFullPath(path) : ResolveConfigPath(path);
 			if (string.IsNullOrWhiteSpace(resolvedPath) || !File.Exists(resolvedPath)) {
-				Logger.Warn($"[DMD] No DmdDevice.ini found at \"{resolvedPath}\"; using component settings.");
+				Logger.Warn("[DMD] No DmdDevice.ini found at {Path:l}, using component settings.", resolvedPath ?? "");
 				return fallback.Clone();
 			}
 
@@ -930,10 +1020,10 @@ namespace VisualPinball.Engine.DMD.Unity
 				ApplyPinDmd1(ini, settings);
 				ApplyPinDmd2(ini, settings);
 				ApplyGame(ini, settings, Path.GetDirectoryName(resolvedPath));
-				Logger.Info($"[DMD] Loaded DmdDevice.ini from \"{resolvedPath}\".");
+				Logger.Info("[DMD] Loaded DmdDevice.ini from {Path:l}.", resolvedPath);
 				return settings;
 			} catch (Exception exception) {
-				Logger.Warn(exception, $"[DMD] Could not load DmdDevice.ini at \"{resolvedPath}\"; using component settings.");
+				Logger.Warn(exception, "[DMD] Could not load DmdDevice.ini at {Path:l}, using component settings.", resolvedPath);
 				return fallback.Clone();
 			}
 		}

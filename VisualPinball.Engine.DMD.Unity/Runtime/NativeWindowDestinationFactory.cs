@@ -23,7 +23,8 @@ namespace VisualPinball.Engine.DMD.Unity
 				return null;
 			}
 
-			Logger.Info($"[DMD] Native-window destination created for {display.Width}x{display.Height} at {settings.NativeWindowLeft},{settings.NativeWindowTop} ({settings.NativeWindowWidth}x{settings.NativeWindowHeight}).");
+			Logger.Info("[DMD] Native-window destination created for {Width}x{Height} at {Left},{Top} ({WindowWidth}x{WindowHeight}).",
+				display.Width, display.Height, settings.NativeWindowLeft, settings.NativeWindowTop, settings.NativeWindowWidth, settings.NativeWindowHeight);
 			return window;
 		}
 
