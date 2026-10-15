@@ -97,6 +97,17 @@
     <Copy Condition="'$(RuntimeIdentifier)' == 'linux-x64' And '@(_LinuxSerialPort)' != ''"
           SourceFiles="@(_LinuxSerialPort)"
           DestinationFiles="$(UnityNativeDir)\libserialport.so" SkipUnchangedFiles="true" />
+    <!-- libzedmd.so loads its dependencies by soname from its own folder ($ORIGIN), so they must
+         also exist under those names; the staging only has the fully versioned files. -->
+    <ItemGroup Condition="'$(RuntimeIdentifier)' == 'linux-x64'">
+      <_LinuxSockpp Include="$(LibDmdNativeRoot)\linux-x64\native\libsockpp.so.1.*" />
+    </ItemGroup>
+    <Copy Condition="'$(RuntimeIdentifier)' == 'linux-x64' And '@(_LinuxSerialPort)' != ''"
+          SourceFiles="@(_LinuxSerialPort)"
+          DestinationFiles="$(UnityNativeDir)\libserialport.so.0" SkipUnchangedFiles="true" />
+    <Copy Condition="'$(RuntimeIdentifier)' == 'linux-x64' And '@(_LinuxSockpp)' != ''"
+          SourceFiles="@(_LinuxSockpp)"
+          DestinationFiles="$(UnityNativeDir)\libsockpp.so.1" SkipUnchangedFiles="true" />
     <Delete Files="@(StaleManagedInRid)" />
     <Delete Files="@(StaleNLogPlugins)" />
   </Target>

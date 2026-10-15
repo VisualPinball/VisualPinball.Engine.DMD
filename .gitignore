@@ -15,3 +15,5 @@ VisualPinball.Engine.DMD.Unity/Plugins/**/*.pdb
 VisualPinball.Engine.DMD.Unity/Plugins/**/*.so
 VisualPinball.Engine.DMD.Unity/Plugins/**/*.so.*
 VisualPinball.Engine.DMD.Unity/Plugins/**/*.dylib
+# ...but not their import settings: "*.so.*" also matches "libserum.so.meta"
+!VisualPinball.Engine.DMD.Unity/Plugins/**/*.meta
