@@ -103,6 +103,8 @@ namespace VisualPinball.Engine.DMD.Unity
 		private Player _player;
 		private IGamelogicEngine _gamelogicEngine;
 		private bool _managed;
+		// whether the frames are RGB rather than gray, which decides the pipeline's source
+		private bool _sourceRgb;
 		private bool _shutdown;
 		private GameObject _managedScene;
 		private Func<IDestination> _presentationDestination;
@@ -166,8 +168,8 @@ namespace VisualPinball.Engine.DMD.Unity
 		{
 			if (_pipeline != null) throw new InvalidOperationException("Configure the DMD bridge before starting its pipeline.");
 			_managed = true; _settings = settings.Clone(); _managedScene = scene; _presentationDestination = presentationDestination; _ownerScheduler = ownerScheduler;
-			_managedInput = new ManagedDmdInput(ownerScheduler, (displayId, width, height) => {
-				EnsurePipeline(new DisplayConfig(displayId, width, height), force: true);
+			_managedInput = new ManagedDmdInput(ownerScheduler, (displayId, width, height, encoding) => {
+				EnsurePipeline(new DisplayConfig(displayId, width, height), force: true, rgb: encoding == DisplayEncoding.Rgb24);
 				return _pipeline;
 			}, sourceIsCurrent, error => Logger.Warn(error, "[DMD] Could not replace the display graph; the next frame will retry."));
 		}
@@ -291,13 +293,21 @@ namespace VisualPinball.Engine.DMD.Unity
 				if (_currentDisplay == null) {
 					if (TryInferDisplayConfig(frame, out var inferredDisplay)) {
 						Logger.Info("[DMD] Inferred display {DisplayId} as {Width}x{Height} from the frame stream.", inferredDisplay.Id, inferredDisplay.Width, inferredDisplay.Height);
-						EnsurePipeline(inferredDisplay);
+						EnsurePipeline(inferredDisplay, rgb: frame.Format == DisplayFrameFormat.Dmd24);
 					} else if (!_missingDisplayWarningLogged) {
 						Logger.Warn("[DMD] Got a frame for {DisplayId} before its dimensions were requested, and could not infer them from {Length} byte(s).", frame.Id, frame.Data?.Length ?? 0);
 						_missingDisplayWarningLogged = true;
 					}
 				}
 
+				if (_pipeline == null) {
+					return;
+				}
+			}
+
+			// the source carries either gray or RGB frames, see VpeGleSource.Create()
+			if (!_pipeline.Accepts(frame.Format)) {
+				EnsurePipeline(_currentDisplay, force: true, rgb: frame.Format == DisplayFrameFormat.Dmd24);
 				if (_pipeline == null) {
 					return;
 				}
@@ -362,10 +372,12 @@ namespace VisualPinball.Engine.DMD.Unity
 			}
 		}
 
-		private void EnsurePipeline(DisplayConfig display, bool force = false)
+		private void EnsurePipeline(DisplayConfig display, bool force = false, bool? rgb = null)
 		{
 			_currentDisplay = display;
-			if (!force && _pipeline != null && _pipeline.Matches(display)) {
+			// without a frame to go by, keep the format the last pipeline was built for
+			_sourceRgb = rgb ?? _sourceRgb;
+			if (!force && _pipeline != null && _pipeline.Matches(display) && _pipeline.Accepts(_sourceRgb ? DisplayFrameFormat.Dmd24 : DisplayFrameFormat.Dmd8)) {
 				return;
 			}
 
@@ -383,7 +395,7 @@ namespace VisualPinball.Engine.DMD.Unity
 			var converter = CreateConverter();
 			_resolvedConverter = converter?.Name ?? "none";
 			RequestSourceFrameFormat(converter != null ? DisplayFrameFormat.Dmd4 : DisplayFrameFormat.Dmd8);
-			_pipeline = new DmdPipeline(display, destinations, converter, _settings.FlipHorizontally);
+			_pipeline = new DmdPipeline(display, destinations, converter, _settings.FlipHorizontally, _sourceRgb);
 			Logger.Info("[DMD] Pipeline for {DisplayId} ({Width}x{Height}) created with {Count} destination(s): {Destinations:l}, colorization: {Colorization:l}.",
 				display.Id, display.Width, display.Height, destinations.Count, _destinationNames, _colorization);
 			PublishDiagnostics();

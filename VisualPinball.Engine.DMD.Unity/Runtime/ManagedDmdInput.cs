@@ -12,7 +12,7 @@ namespace VisualPinball.Engine.DMD.Unity
 {
 	internal interface IManagedDmdPipeline : IDisposable
 	{
-		bool Matches(string displayId, int width, int height);
+		bool Matches(string displayId, int width, int height, DisplayEncoding encoding);
 		void Push(in PluginDisplayFrame frame);
 		Task StopWorkerAsync();
 	}
@@ -21,7 +21,7 @@ namespace VisualPinball.Engine.DMD.Unity
 	internal sealed class ManagedDmdInput
 	{
 		private readonly OwnerScheduler _owner;
-		private readonly Func<string, int, int, IManagedDmdPipeline> _create;
+		private readonly Func<string, int, int, DisplayEncoding, IManagedDmdPipeline> _create;
 		private readonly Func<long, bool> _sourceIsCurrent;
 		private readonly Action<Exception> _reportError;
 		private long _instance;
@@ -34,7 +34,7 @@ namespace VisualPinball.Engine.DMD.Unity
 		private string _pendingDisplayId;
 		internal IManagedDmdPipeline Pipeline { get; private set; }
 
-		internal ManagedDmdInput(OwnerScheduler owner, Func<string, int, int, IManagedDmdPipeline> create, Func<long, bool> sourceIsCurrent = null, Action<Exception> reportError = null)
+		internal ManagedDmdInput(OwnerScheduler owner, Func<string, int, int, DisplayEncoding, IManagedDmdPipeline> create, Func<long, bool> sourceIsCurrent = null, Action<Exception> reportError = null)
 		{
 			_owner = owner ?? throw new ArgumentNullException(nameof(owner));
 			_create = create ?? throw new ArgumentNullException(nameof(create));
@@ -51,7 +51,7 @@ namespace VisualPinball.Engine.DMD.Unity
 				return;
 			}
 			_replacement = null;
-			if (Pipeline != null && (_replacementRequired || _instance != frame.Instance || !Pipeline.Matches(displayId, frame.Width, frame.Height))) {
+			if (Pipeline != null && (_replacementRequired || _instance != frame.Instance || !Pipeline.Matches(displayId, frame.Width, frame.Height, frame.Encoding))) {
 				Retain(frame, displayId);
 				_replacement = ReplaceAsync(Pipeline);
 				return;
@@ -71,7 +71,7 @@ namespace VisualPinball.Engine.DMD.Unity
 
 		private void StartOrPush(in PluginDisplayFrame frame, string displayId)
 		{
-			Pipeline ??= _create(displayId, frame.Width, frame.Height);
+			Pipeline ??= _create(displayId, frame.Width, frame.Height, frame.Encoding);
 			_instance = frame.Instance;
 			Pipeline?.Push(frame);
 		}

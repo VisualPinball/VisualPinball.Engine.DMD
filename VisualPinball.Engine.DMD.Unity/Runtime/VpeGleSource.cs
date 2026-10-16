@@ -24,13 +24,20 @@ namespace VisualPinball.Engine.DMD.Unity
 			Dimensions = new Dimensions(width, height);
 		}
 
-		public static VpeGleSource Create(DisplayConfig display, bool colorize)
+		/// <summary>
+		/// The render graph connects each destination to one format of the source, the first one
+		/// both support, so an uncolorized source offers only the format its frames come in: gray
+		/// (any bit depth, as 8-bit) or RGB. The pipeline is rebuilt when frames switch between them.
+		/// </summary>
+		public static VpeGleSource Create(DisplayConfig display, bool colorize, bool rgb)
 		{
 			if (colorize) {
 				return new ColorizableVpeGleSource(display.Id, display.Width, display.Height);
 			}
 
-			return new PassthroughVpeGleSource(display.Id, display.Width, display.Height);
+			return rgb
+				? new Rgb24VpeGleSource(display.Id, display.Width, display.Height)
+				: new GrayVpeGleSource(display.Id, display.Width, display.Height);
 		}
 
 		/// <summary>
@@ -60,14 +67,11 @@ namespace VisualPinball.Engine.DMD.Unity
 			return new DmdFrame(Dimensions, copy, 8);
 		}
 
-		private sealed class PassthroughVpeGleSource : VpeGleSource, IGray2Source, IGray4Source, IGray8Source, IRgb24Source
+		private sealed class GrayVpeGleSource : VpeGleSource, IGray8Source
 		{
-			private readonly Subject<DmdFrame> _gray2Frames = new Subject<DmdFrame>();
-			private readonly Subject<DmdFrame> _gray4Frames = new Subject<DmdFrame>();
 			private readonly Subject<DmdFrame> _gray8Frames = new Subject<DmdFrame>();
-			private readonly Subject<DmdFrame> _rgb24Frames = new Subject<DmdFrame>();
 
-			public PassthroughVpeGleSource(string displayId, int width, int height) : base(displayId, width, height)
+			public GrayVpeGleSource(string displayId, int width, int height) : base(displayId, width, height)
 			{
 			}
 
@@ -75,27 +79,34 @@ namespace VisualPinball.Engine.DMD.Unity
 			{
 				switch (format) {
 					case DisplayFrameFormat.Dmd2:
-						_gray2Frames.OnNext(CreateFrame(data, length, 2));
 						_gray8Frames.OnNext(CreateGray8Frame(data, length, 3));
 						break;
 					case DisplayFrameFormat.Dmd4:
-						_gray4Frames.OnNext(CreateFrame(data, length, 4));
 						_gray8Frames.OnNext(CreateGray8Frame(data, length, 15));
 						break;
 					case DisplayFrameFormat.Dmd8:
 						_gray8Frames.OnNext(CreateFrame(data, length, 8));
 						break;
-					case DisplayFrameFormat.Dmd24:
-						_rgb24Frames.OnNext(CreateFrame(data, length, 24));
-						break;
 				}
 			}
 
-			public IObservable<DmdFrame> GetGray2Frames(bool dedupe, bool skipIdentificationFrames) => _gray2Frames;
-
-			public IObservable<DmdFrame> GetGray4Frames(bool dedupe, bool skipIdentificationFrames) => _gray4Frames;
-
 			public IObservable<DmdFrame> GetGray8Frames(bool dedupe) => _gray8Frames;
+		}
+
+		private sealed class Rgb24VpeGleSource : VpeGleSource, IRgb24Source
+		{
+			private readonly Subject<DmdFrame> _rgb24Frames = new Subject<DmdFrame>();
+
+			public Rgb24VpeGleSource(string displayId, int width, int height) : base(displayId, width, height)
+			{
+			}
+
+			public override void Push(DisplayFrameFormat format, byte[] data, int length)
+			{
+				if (format == DisplayFrameFormat.Dmd24) {
+					_rgb24Frames.OnNext(CreateFrame(data, length, 24));
+				}
+			}
 
 			public IObservable<DmdFrame> GetRgb24Frames() => _rgb24Frames;
 		}
