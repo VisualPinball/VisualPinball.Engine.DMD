@@ -31,10 +31,10 @@ namespace VisualPinball.Engine.DMD.Tests
 			_sourceIsCurrent = true;
 			_failCreation = false;
 			_errors = new List<Exception>();
-			_input = new ManagedDmdInput(_owner, (id, width, height) => {
+			_input = new ManagedDmdInput(_owner, (id, width, height, encoding) => {
 				_owner.VerifyOwner();
 				if (_failCreation) throw new InvalidOperationException("Graph initialization failed.");
-				var pipeline = new Pipeline(id, width, height);
+				var pipeline = new Pipeline(id, width, height, encoding);
 				_created.Add(pipeline);
 				return pipeline;
 			}, instance => _sourceIsCurrent, _errors.Add);
@@ -71,6 +71,20 @@ namespace VisualPinball.Engine.DMD.Tests
 			Assert.That(previous.Disposed, Is.True);
 			Assert.That(_created[1].Frames[0].Pixels.ToArray(), Is.EqualTo(sourceChange ? new byte[] { 3, 4 } : new byte[] { 3, 4, 5, 6 }));
 			Assert.That(_created[1].Frames[0].Instance, Is.EqualTo(changed.Instance));
+		}
+
+		[Test]
+		public void SwitchingBetweenGrayAndRgbRebuildsThePipeline()
+		{
+			_input.Feed(Frame(new byte[] { 1, 2 }), "dmd0");
+			_input.Feed(new PluginDisplayFrame(new byte[] { 9, 8 }, 2, 1, 2, DisplayEncoding.Luminance8, 2, 2000, 1), "dmd0");
+			Assert.That(_created.Count, Is.EqualTo(1), "gray stays gray, whatever the bit depth");
+			var rgb = new PluginDisplayFrame(new byte[] { 1, 2, 3, 4, 5, 6 }, 2, 1, 6, DisplayEncoding.Rgb24, 3, 3000, 1);
+			_input.Feed(rgb, "dmd0");
+			_created[0].FinishStop();
+			PumpUntil(() => _created.Count == 2);
+			Assert.That(_created[1].Encoding, Is.EqualTo(DisplayEncoding.Rgb24));
+			Assert.That(_created[1].Frames[0].Pixels.ToArray(), Is.EqualTo(new byte[] { 1, 2, 3, 4, 5, 6 }));
 		}
 
 		[Test]
@@ -200,6 +214,7 @@ namespace VisualPinball.Engine.DMD.Tests
 		{
 			internal readonly string Id;
 			internal readonly int Width, Height;
+			internal readonly DisplayEncoding Encoding;
 			internal readonly List<PluginDisplayFrame> Frames = new List<PluginDisplayFrame>();
 			private readonly TaskCompletionSource<bool> _stopped = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 			internal bool Disposed;
@@ -207,8 +222,8 @@ namespace VisualPinball.Engine.DMD.Tests
 			internal bool FailNextStop;
 			internal int StopRequests;
 			internal ReadOnlyMemory<byte> LastBorrowedPixels;
-			internal Pipeline(string id, int width, int height) { Id = id; Width = width; Height = height; }
-			public bool Matches(string id, int width, int height) => Id == id && Width == width && Height == height;
+			internal Pipeline(string id, int width, int height, DisplayEncoding encoding) { Id = id; Width = width; Height = height; Encoding = encoding; }
+			public bool Matches(string id, int width, int height, DisplayEncoding encoding) => Id == id && Width == width && Height == height && (Encoding == DisplayEncoding.Rgb24) == (encoding == DisplayEncoding.Rgb24);
 			public void Push(in PluginDisplayFrame frame)
 			{
 				if (Disposed) throw new ObjectDisposedException(nameof(Pipeline));

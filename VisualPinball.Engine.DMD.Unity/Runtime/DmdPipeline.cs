@@ -36,6 +36,7 @@ namespace VisualPinball.Engine.DMD.Unity
 	{
 		private readonly DisplayConfig _display;
 		private readonly VpeGleSource _source;
+		private readonly bool _rgb;
 		private readonly List<IDestination> _destinations;
 		private readonly RenderGraph _renderGraph;
 		private readonly IDisposable _renderer;
@@ -64,11 +65,12 @@ namespace VisualPinball.Engine.DMD.Unity
 		private readonly LogThrottle _frameFailureThrottle = new LogThrottle(3, TimeSpan.FromSeconds(30));
 		private readonly LogThrottle _renderGraphErrorThrottle = new LogThrottle(3, TimeSpan.FromSeconds(30));
 
-		public DmdPipeline(DisplayConfig display, List<IDestination> destinations, AbstractConverter converter, bool flipHorizontally)
+		public DmdPipeline(DisplayConfig display, List<IDestination> destinations, AbstractConverter converter, bool flipHorizontally, bool rgb)
 		{
 			_display = display;
 			_destinations = destinations;
-			_source = VpeGleSource.Create(display, converter != null);
+			_rgb = rgb;
+			_source = VpeGleSource.Create(display, converter != null, rgb);
 			_renderGraph = new RenderGraph(new UndisposedReferences(), runOnMainThread: true) {
 				Name = $"VPE DMD ({display.Id})",
 				Source = _source,
@@ -104,11 +106,15 @@ namespace VisualPinball.Engine.DMD.Unity
 				&& _display.FlipX == display.FlipX;
 		}
 
-		public bool Matches(string displayId, int width, int height)
+		public bool Matches(string displayId, int width, int height, DisplayEncoding encoding)
 		{
 			return string.Equals(_display.Id, displayId, StringComparison.OrdinalIgnoreCase)
-				&& _display.Width == width && _display.Height == height;
+				&& _display.Width == width && _display.Height == height
+				&& (encoding == DisplayEncoding.Rgb24) == _rgb;
 		}
+
+		/// <summary>Whether the source was built for frames of this format, gray or RGB.</summary>
+		public bool Accepts(DisplayFrameFormat format) => (format == DisplayFrameFormat.Dmd24) == _rgb;
 
 		/// <summary>Called on the Unity main thread. Copies the frame and signals the worker.</summary>
 		public void Push(DisplayFrameData frame)

@@ -24,6 +24,7 @@ namespace VisualPinball.Engine.DMD.Unity
 		private readonly Dimensions _size;
 		private readonly bool _previousReceiveGamelogicFrames;
 		private bool _disposed;
+		private bool _receivedFrame;
 
 		private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
@@ -126,6 +127,10 @@ namespace VisualPinball.Engine.DMD.Unity
 		{
 			if (_disposed || _display == null || frame?.Data == null) {
 				return;
+			}
+			if (!_receivedFrame) {
+				_receivedFrame = true;
+				Logger.Info("[DMD] First frame for the in-scene display {DisplayId} ({Format}).", _display.Id, format);
 			}
 
 			_framePump.Enqueue(format, frame.Data);
