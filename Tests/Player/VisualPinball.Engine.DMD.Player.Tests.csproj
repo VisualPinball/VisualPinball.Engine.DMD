@@ -4,11 +4,15 @@
 		<IsTestProject>true</IsTestProject>
 		<IsPackable>false</IsPackable>
 		<VpeSourceRoot Condition="'$(VpeSourceRoot)' == ''">../../../VisualPinball.Engine</VpeSourceRoot>
+		<LibDmdExtensionsRoot Condition="'$(LibDmdExtensionsRoot)' == ''">C:\Development\dmd-extensions</LibDmdExtensionsRoot>
 	</PropertyGroup>
 	<ItemGroup>
 		<ProjectReference Include="$(VpeSourceRoot)/VisualPinball.Plugins/VisualPinball.Plugins.csproj" />
 		<Compile Include="../../VisualPinball.Engine.DMD.Unity/Runtime/Plugins/ColorizationCatalog.cs" Link="ColorizationCatalog.cs" />
 		<Compile Include="../../VisualPinball.Engine.DMD.Unity/Runtime/ManagedDmdInput.cs" Link="ManagedDmdInput.cs" />
+		<!-- with VpeTypes.cs standing in for the VisualPinball.Unity types it uses -->
+		<Compile Include="../../VisualPinball.Engine.DMD.Unity/Runtime/VpeGleSource.cs" Link="VpeGleSource.cs" />
+		<ProjectReference Include="$(LibDmdExtensionsRoot)/LibDmd.Core/LibDmd.Core.csproj" />
 		<PackageReference Include="NUnit" Version="3.13.3" />
 		<PackageReference Include="NUnit3TestAdapter" Version="4.2.1" />
 		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
