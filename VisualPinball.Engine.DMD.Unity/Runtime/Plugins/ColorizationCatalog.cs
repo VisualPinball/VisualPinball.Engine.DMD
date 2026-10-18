@@ -46,22 +46,24 @@ namespace VisualPinball.Engine.DMD.Player
 		private static bool InGameFolder(ColorizationAsset asset, string game) => asset.Id.StartsWith(game + "/", StringComparison.OrdinalIgnoreCase) && asset.Id.IndexOf('/', game.Length + 1) < 0;
 		private static bool IsSerum(string file) => Path.GetExtension(file).ToLowerInvariant() is ".crz" or ".crom" or ".cromc";
 		private static string Relative(string root, string file) => Path.GetRelativePath(root, file).Replace('\\', '/');
-		/// <param name="hasPacKey">Whether a PAC key is configured; PAC files only win automatic selection with one.</param>
+		/// <param name="hasPacKey">Whether a PAC key is configured. Without one, automatic selection skips PAC files and doesn't fall
+		/// back to pin2dmd.pal next to a PAC, since DmdDevice fails to load such a folder and shows the uncolorized frames.</param>
 		internal static ColorizationAsset Select(string root, string game, string selection, bool hasPacKey = false)
 		{
 			if (selection == "none") return null;
 			var assets = Read(root, game);
 			if (selection == "auto") {
-				if (assets.Count <= 1) return assets.FirstOrDefault();
+				if (assets.Count <= 1) return assets.FirstOrDefault(asset => hasPacKey || !asset.RequiresKey);
 				// Several: what DmdDevice itself loads from the game folder, like the standalone bridge did. Serum first (the newest
-				// .cRZ, .cROM or .cROMc), then VNI, which prefers pin2dmd.pac over pin2dmd.pal when it can decrypt it.
+				// .cRZ, .cROM or .cROMc), then VNI, which loads the newest PAC whatever its name, and pin2dmd.pal only without a PAC.
 				var serum = assets.Where(asset => InGameFolder(asset, game) && IsSerum(asset.Files[0]))
 					.OrderByDescending(asset => File.GetCreationTimeUtc(asset.Files[0])).FirstOrDefault();
 				if (serum != null) return serum;
-				foreach (string standard in hasPacKey ? new[] { "pin2dmd.pac", "pin2dmd.pal" } : new[] { "pin2dmd.pal", "pin2dmd.pac" }) {
-					var match = assets.FirstOrDefault(asset => string.Equals(asset.Id, game + "/" + standard, StringComparison.OrdinalIgnoreCase));
-					if (match != null) return match;
-				}
+				var pac = assets.Where(asset => InGameFolder(asset, game) && asset.RequiresKey)
+					.OrderByDescending(asset => File.GetCreationTimeUtc(asset.Files[0])).FirstOrDefault();
+				if (pac != null) return hasPacKey ? pac : null;
+				var pal = assets.FirstOrDefault(asset => string.Equals(asset.Id, game + "/pin2dmd.pal", StringComparison.OrdinalIgnoreCase));
+				if (pal != null) return pal;
 				throw new InvalidOperationException("Several colorizations are available. Select one for this game.");
 			}
 			return assets.FirstOrDefault(asset => asset.Id == selection) ?? throw new FileNotFoundException("Selected colorization is missing: " + selection);
