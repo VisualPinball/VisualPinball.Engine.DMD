@@ -91,13 +91,30 @@ namespace VisualPinball.Engine.DMD.Player
 			switch (provider) {
 				case "colorizations":
 					choices.Add(new PluginChoice("auto", "Automatic", "Uses the sole available colorization, or what DmdDevice loads from the game folder: Serum first, then the newest .pac, which needs a PAC key (without one, no colorization), then pin2dmd.pal and .vni. Otherwise select one.")); choices.Add(new PluginChoice("none", "No colorization"));
-					foreach (var asset in ColorizationCatalog.Read(DmdPluginFactory.ColorizationLibrary(request.Settings.String("AltColorRoot")), request.Game?.Key ?? "")) choices.Add(new PluginChoice(asset.Id, asset.Label, available: !asset.RequiresKey || PacKey(request.Settings).Length > 0, unavailableReason: "A PAC key is required."));
+					foreach (var asset in ColorizationCatalog.Read(Library(request.Settings, request.Game?.Key), request.Game?.Key ?? "")) choices.Add(new PluginChoice(asset.Id, asset.Label, available: !asset.RequiresKey || PacKey(request.Settings).Length > 0, unavailableReason: "A PAC key is required."));
 					break;
 				case "scalers": foreach (string name in Enum.GetNames(typeof(ScalerMode))) choices.Add(new PluginChoice(name, name)); break;
 				case "matrices": foreach (string name in Enum.GetNames(typeof(ColorMatrix))) choices.Add(new PluginChoice(name, name)); break;
 			}
 			return new PluginChoiceCatalog(string.Join("|", choices.Select(choice => choice.Id)), choices);
 		}
+		/// <summary>
+		/// The colorization library a game uses: the configured folder, else the altcolor folder DmdDevice.ini sets for the game, else
+		/// the first default altcolor folder that exists. The settings screen and the game resolve it the same way.
+		/// </summary>
+		internal static string Library(PluginSettingsSnapshot settings, string game)
+		{
+			string configured = settings.String("AltColorRoot").Trim();
+			if (configured.Length == 0 && !string.IsNullOrWhiteSpace(game)) {
+				string ini = DmdDeviceIni();
+				string altColor = ini == null ? null : DmdBridgeConfig.ReadValue(ini, game, "altcolor");
+				if (!string.IsNullOrWhiteSpace(altColor)) {
+					try { configured = Path.IsPathRooted(altColor) ? altColor : Path.GetFullPath(Path.Combine(Path.GetDirectoryName(ini) ?? "", altColor)); } catch (Exception error) { Logger.Debug(error, "[DMD] Skipping altcolor {Path:l} from DmdDevice.ini.", altColor); }
+				}
+			}
+			return ColorizationLibrary(configured);
+		}
+
 		/// <summary>The colorization library to use: the configured folder, or the first default altcolor folder that exists.</summary>
 		internal static string ColorizationLibrary(string configured)
 		{
@@ -127,7 +144,7 @@ namespace VisualPinball.Engine.DMD.Player
 			foreach (string field in new[] { "UnlitDot", "GlassColor" }) if (!ColorUtility.TryParseHtmlString(request.Settings.String(field), out _)) issues.Add(new PluginValidationIssue(field, "Enter a color such as #FFAA00."));
 			if (request.Game.HasValue) try {
 				bool hasKey = PacKey(request.Settings).Length > 0;
-				var asset = ColorizationCatalog.Select(DmdPluginFactory.ColorizationLibrary(request.Settings.String("AltColorRoot")), request.Game.Value.Key, request.Settings.String("Colorization", "auto"), hasKey);
+				var asset = ColorizationCatalog.Select(Library(request.Settings, request.Game.Value.Key), request.Game.Value.Key, request.Settings.String("Colorization", "auto"), hasKey);
 				if (asset?.RequiresKey == true && !hasKey) issues.Add(new PluginValidationIssue("VniKey", "A PAC key is required."));
 			} catch (Exception error) { issues.Add(new PluginValidationIssue("Colorization", error.Message)); }
 			return issues;
@@ -166,7 +183,8 @@ namespace VisualPinball.Engine.DMD.Player
 				};
 			}
 			if (!string.IsNullOrWhiteSpace(settings.AltColorPath)) values["AltColorRoot"] = settings.AltColorPath;
-			if (!settings.EnableColorization) values["Colorization"] = "none";
+			string selected = current.String("Colorization", "auto");
+			values["Colorization"] = !settings.EnableColorization ? "none" : selected == "none" ? "auto" : selected;
 			return values;
 		}
 
@@ -182,8 +200,8 @@ namespace VisualPinball.Engine.DMD.Player
 			if (iniPath == null) return effective;
 			var result = effective.Copy();
 			foreach (var value in IniValues(iniPath, effective, romName).Properties()) {
-				// an empty PAC key means "use the ini's", as the field says, also when it was saved empty
-				bool keptByUser = saved.Contains(value.Name) && !(value.Name == "VniKey" && effective.String("VniKey").Trim().Length == 0);
+				// an empty PAC key or library means "use the ini's", as the fields say, also when saved empty
+				bool keptByUser = saved.Contains(value.Name) && !((value.Name == "VniKey" || value.Name == "AltColorRoot") && effective.String(value.Name).Trim().Length == 0);
 				if (keptByUser || Same(result.Values[value.Name], value.Value)) continue;
 				result.Values[value.Name] = value.Value; imported++;
 			}

@@ -128,7 +128,8 @@ namespace VisualPinball.Engine.DMD.Unity
 		private float _nextSettingsCheckTime;
 
 		// kept for diagnostics
-		private string _colorization = "not resolved yet";
+		private const string ColorizationNotResolved = "not resolved yet";
+		private string _colorization = ColorizationNotResolved;
 		private string _serumLibraryVersion;
 		private string _destinationNames = "";
 		private string[] _destinations = Array.Empty<string>();
@@ -800,6 +801,9 @@ namespace VisualPinball.Engine.DMD.Unity
 		/// before the first pipeline.
 		/// </summary>
 		public string LoadedColorization => _colorization;
+
+		/// <summary>Whether the pipeline tried to load the colorization yet, so <see cref="LoadedColorization"/> is final.</summary>
+		public bool ColorizationResolved => _colorization != ColorizationNotResolved;
 
 		/// <summary>The names of the destinations the pipeline drives, the devices that were actually found among them.</summary>
 		public IReadOnlyList<string> Destinations => _destinations;

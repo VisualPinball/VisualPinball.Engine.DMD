@@ -49,7 +49,7 @@ namespace VisualPinball.Engine.DMD.Player
 			var settings = DmdPluginFactory.Settings(effective);
 			settings.RomName = game.Identity.Key;
 			_gameSettings = effective;
-			_colorizationLibrary = DmdPluginFactory.ColorizationLibrary(effective.String("AltColorRoot"));
+			_colorizationLibrary = DmdPluginFactory.Library(effective, game.Identity.Key);
 			var asset = ColorizationCatalog.Select(_colorizationLibrary, game.Identity.Key, effective.String("Colorization", "auto"), effective.String("VniKey").Length > 0);
 			settings.EnableColorization = asset != null;
 			_asset = asset; _settings = settings;
@@ -131,9 +131,11 @@ namespace VisualPinball.Engine.DMD.Player
 		public void DescribeStatus(PluginStatusWriter writer)
 		{
 			if (_gameSettings == null) return;
-			string loaded = _bridge != null ? _bridge.LoadedColorization : "";
+			bool resolved = _bridge != null && _bridge.ColorizationResolved;
+			string loaded = resolved ? _bridge.LoadedColorization : "";
 			bool failed = _asset != null && (loaded.StartsWith("none", StringComparison.Ordinal) || loaded == "disabled");
 			if (_asset == null) writer.Add("Colorization", _noColorizationReason ?? "off");
+			else if (!resolved) writer.Add("Colorization", AssetKind(_asset) + ", " + AssetFiles(_asset) + ", waiting for the DMD");
 			else writer.Add("Colorization", failed ? "off, " + AssetFiles(_asset) + " didn't load" : AssetKind(_asset) + ", " + AssetFiles(_asset));
 			if (_asset == null || failed) {
 				var tint = LibDmd.RenderGraph.DefaultColor;
