@@ -131,6 +131,7 @@ namespace VisualPinball.Engine.DMD.Unity
 		private string _colorization = "not resolved yet";
 		private string _serumLibraryVersion;
 		private string _destinationNames = "";
+		private string[] _destinations = Array.Empty<string>();
 
 		private const float SettingsCheckInterval = 0.25f;
 
@@ -384,7 +385,8 @@ namespace VisualPinball.Engine.DMD.Unity
 			_pipeline?.Dispose();
 			CaptureAppliedSettings();
 			var destinations = CreateDestinations(display);
-			_destinationNames = DestinationNames(destinations);
+			_destinations = DestinationNames(destinations);
+			_destinationNames = string.Join(", ", _destinations);
 			if (destinations.Count == 0) {
 				Logger.Warn("[DMD] No DMD destinations are available, the bridge will ignore frames.");
 				_pipeline = null;
@@ -401,7 +403,7 @@ namespace VisualPinball.Engine.DMD.Unity
 			PublishDiagnostics();
 		}
 
-		private static string DestinationNames(List<IDestination> destinations)
+		private static string[] DestinationNames(List<IDestination> destinations)
 		{
 			var names = new List<string>(destinations.Count);
 			foreach (var destination in destinations) {
@@ -413,7 +415,7 @@ namespace VisualPinball.Engine.DMD.Unity
 				}
 				names.Add(string.IsNullOrEmpty(name) ? destination.GetType().Name : name);
 			}
-			return string.Join(", ", names);
+			return names.ToArray();
 		}
 
 		private void RequestSourceFrameFormat(DisplayFrameFormat format)
@@ -793,6 +795,15 @@ namespace VisualPinball.Engine.DMD.Unity
 		/// </summary>
 		public IDiagnosticsSource DiagnosticsOwner { get; set; }
 
+		/// <summary>
+		/// The colorization the pipeline loaded: "Serum v2", "VNI/PAL" or "PAL", "disabled", or "none (why)"; "not resolved yet"
+		/// before the first pipeline.
+		/// </summary>
+		public string LoadedColorization => _colorization;
+
+		/// <summary>The names of the destinations the pipeline drives, the devices that were actually found among them.</summary>
+		public IReadOnlyList<string> Destinations => _destinations;
+
 		private void PublishDiagnostics()
 		{
 			DiagnosticsContext.Set(DiagnosticsOwner ?? this);
@@ -1075,6 +1086,17 @@ namespace VisualPinball.Engine.DMD.Unity
 			}
 
 			return null;
+		}
+
+		/// <summary>One value of a DmdDevice.ini, or null when the file, section or key is missing. Doesn't log on success.</summary>
+		public static string ReadValue(string path, string section, string key)
+		{
+			try {
+				return File.Exists(path) && Parse(path).TryGetValue(section, out var values) ? GetString(values, key, null) : null;
+			} catch (Exception exception) {
+				Logger.Debug(exception, "[DMD] Could not read {Key} from {Path:l}.", key, path);
+				return null;
+			}
 		}
 
 		private static Dictionary<string, Dictionary<string, string>> Parse(string path)

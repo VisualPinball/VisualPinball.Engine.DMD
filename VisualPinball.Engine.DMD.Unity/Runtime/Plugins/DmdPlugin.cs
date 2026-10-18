@@ -19,7 +19,7 @@ using VisualPinball.Unity;
 
 namespace VisualPinball.Engine.DMD.Player
 {
-	internal sealed class DmdPlugin : PlayerPlugin, IPluginTick, IPluginEmergencyStop, IPluginDeferredCleanup, IDiagnosticsSource
+	internal sealed class DmdPlugin : PlayerPlugin, IPluginTick, IPluginEmergencyStop, IPluginDeferredCleanup, IDiagnosticsSource, IPluginStatusSource
 	{
 		private readonly PluginApplicationContext _application;
 		private readonly List<DmdPresentationDestination> _presentations = new List<DmdPresentationDestination>();
@@ -35,16 +35,25 @@ namespace VisualPinball.Engine.DMD.Player
 		private string _colorizationLibrary;
 		private string _colorizationAsset;
 		private string _stagedColorization;
+		private string _dmdDeviceIni;
+		// kept for the pause menu
+		private ColorizationAsset _asset;
+		private string _noColorizationReason;
+		private int _iniImported;
+		private DmdBridgeSettings _settings;
 		internal DmdPlugin(PluginApplicationContext application) { _application = application; }
 		public override Task PrepareGameAsync(PluginGameContext game, CancellationToken cancellation)
 		{
 			var scene = game.Capabilities.Require<IUnityGameScene>(UnityPluginCapability.GameScene);
-			var settings = DmdPluginFactory.Settings(game.Settings);
+			var effective = WithDmdDeviceIni(game);
+			var settings = DmdPluginFactory.Settings(effective);
 			settings.RomName = game.Identity.Key;
-			_gameSettings = game.Settings;
-			_colorizationLibrary = DmdPluginFactory.ColorizationLibrary(game.Settings.String("AltColorRoot"));
-			var asset = ColorizationCatalog.Select(_colorizationLibrary, game.Identity.Key, game.Settings.String("Colorization", "auto"), game.Settings.String("VniKey").Length > 0);
+			_gameSettings = effective;
+			_colorizationLibrary = DmdPluginFactory.ColorizationLibrary(effective.String("AltColorRoot"));
+			var asset = ColorizationCatalog.Select(_colorizationLibrary, game.Identity.Key, effective.String("Colorization", "auto"), effective.String("VniKey").Length > 0);
 			settings.EnableColorization = asset != null;
+			_asset = asset; _settings = settings;
+			_noColorizationReason = asset != null ? null : NoColorizationReason(game.Identity.Key, effective);
 			_colorizationAsset = asset != null ? asset.Id + " (" + asset.Label + ")" : "none";
 			if (asset != null) {
 				_nativeResources.Own(ColorizationCatalog.Stage(asset, Path.Combine(_application.Configuration.DirectoryFor(_application.Plugin), "cache", "colorizations"), game.Identity.Key, out string staged));
@@ -61,7 +70,7 @@ namespace VisualPinball.Engine.DMD.Player
 			var selection = new PluginResourceSelection(ResourceKind.Display) { Controller = game.ControllerId, Session = game.Session, Role = "dmd",
 				Intent = asset == null ? ResourceView.Original : ResourceView.Identification,
 				Accepts = asset == null ? DisplayEncoding.Gray2 | DisplayEncoding.Gray4 | DisplayEncoding.Luminance8 | DisplayEncoding.Rgb24 : DisplayEncoding.Gray2 | DisplayEncoding.Gray4 };
-			string source = game.Settings.String("Source", "auto"); if (source != "auto") selection.ResourceId = PluginResourceChoices.Resolve(game.ControllerId, source);
+			string source = effective.String("Source", "auto"); if (source != "auto") selection.ResourceId = PluginResourceChoices.Resolve(game.ControllerId, source);
 			_binding = game.Lifetime.Own(game.Resources.Bind<IPluginDisplaySource>(selection));
 			_bridge.ConfigureManaged(settings, scene.Table, () => {
 				_application.Scheduler.VerifyOwner();
@@ -78,11 +87,104 @@ namespace VisualPinball.Engine.DMD.Player
 			return Task.CompletedTask;
 		}
 
+		/// <summary>
+		/// The game's settings with DmdDevice.ini underneath what the user saved: values in the global settings or the game's profile
+		/// win, every other one comes from the ini when it has it.
+		/// </summary>
+		private PluginSettingsSnapshot WithDmdDeviceIni(PluginGameContext game)
+		{
+			var schema = DmdPluginFactory.SettingsSchema;
+			var saved = new HashSet<string>(StringComparer.Ordinal);
+			try {
+				foreach (var value in _application.Configuration.Read(_application.Plugin, schema).Values.Properties())
+					if (schema.Fields.FirstOrDefault(field => field.Id == value.Name)?.Scope != ConfigurationScope.GameOnly) saved.Add(value.Name);
+				foreach (var value in _application.Configuration.Read(_application.Plugin, schema, game.Identity).Values.Properties())
+					if (schema.Fields.FirstOrDefault(field => field.Id == value.Name)?.Scope != ConfigurationScope.GlobalOnly) saved.Add(value.Name);
+			} catch (Exception error) {
+				_application.Logger.Warn($"Not applying DmdDevice.ini, the saved DMD settings couldn't be read: {error.Message}");
+				return game.Settings;
+			}
+			var effective = DmdPluginFactory.WithDmdDeviceIni(game.Settings, saved, game.Identity.Key, out _dmdDeviceIni, out int imported);
+			_iniImported = imported;
+			_application.Logger.Info(_dmdDeviceIni != null
+				? $"DmdDevice.ini at {_dmdDeviceIni} applied: {imported} setting(s) from the ini, {saved.Count} saved in VPE."
+				: "No DmdDevice.ini found (DMDDEVICE_CONFIG, VPM_HOME, VPinMAME's COM registration, next to the ROM folder).");
+			return effective;
+		}
+
+		/// <summary>Why a game plays without colorization, in the pause menu's words. Reads the library, so only while preparing.</summary>
+		private string NoColorizationReason(string game, PluginSettingsSnapshot settings)
+		{
+			if (settings.String("Colorization", "auto") == "none") return "off";
+			if (_colorizationLibrary.Length == 0) return "off, no altcolor folder found";
+			try {
+				var found = ColorizationCatalog.Read(_colorizationLibrary, game);
+				if (found.Count == 0) return "off, none for this game";
+				var pac = found.FirstOrDefault(asset => asset.RequiresKey);
+				if (pac != null && settings.String("VniKey").Length == 0) return "off, " + Path.GetFileName(pac.Files[0]) + " found, no PAC key";
+			} catch (Exception) {
+				return "off";
+			}
+			return "off";
+		}
+
+		public void DescribeStatus(PluginStatusWriter writer)
+		{
+			if (_gameSettings == null) return;
+			string loaded = _bridge != null ? _bridge.LoadedColorization : "";
+			bool failed = _asset != null && (loaded.StartsWith("none", StringComparison.Ordinal) || loaded == "disabled");
+			if (_asset == null) writer.Add("Colorization", _noColorizationReason ?? "off");
+			else writer.Add("Colorization", failed ? "off, " + AssetFiles(_asset) + " didn't load" : AssetKind(_asset) + ", " + AssetFiles(_asset));
+			if (_asset == null || failed) {
+				var tint = LibDmd.RenderGraph.DefaultColor;
+				writer.Add("Tint", $"#{tint.R:X2}{tint.G:X2}{tint.B:X2}");
+			}
+			if (_dmdDeviceIni != null) {
+				string folder = Path.GetFileName(Path.GetDirectoryName(_dmdDeviceIni) ?? "");
+				writer.Add("DmdDevice.ini", (folder.Length > 0 ? "from " + folder + ", " : "") + (_iniImported == 0 ? "nothing applied" : _iniImported == 1 ? "1 setting applied" : _iniImported + " settings applied"));
+			}
+			var outputs = (_bridge != null ? _bridge.Destinations : Array.Empty<string>()).Select(Output).Where(name => name != null).ToList();
+			if (outputs.Count > 0) writer.Add("Outputs", string.Join(", ", outputs));
+		}
+
+		private static string AssetKind(ColorizationAsset asset)
+		{
+			switch (Path.GetExtension(asset.Files[0]).ToLowerInvariant()) {
+				case ".crz": case ".crom": case ".cromc": return "Serum";
+				case ".pac": return "PAC";
+				default: return asset.Files.Length > 1 ? "PIN2DMD" : "PIN2DMD palette";
+			}
+		}
+
+		// the files as the library has them, relative to the game folder: "pin2dmd.pal + pin2dmd.vni", "old/pin2dmd.pal"
+		private static string AssetFiles(ColorizationAsset asset)
+		{
+			string inGame = asset.Id.Substring(asset.Id.IndexOf('/') + 1);
+			string subfolder = inGame.Contains('/') ? inGame.Substring(0, inGame.LastIndexOf('/') + 1) : "";
+			return string.Join(" + ", asset.Files.Select(file => subfolder + Path.GetFileName(file)));
+		}
+
+		// the cabinet DMDs and windows by what the player calls them; the table's own DMD and the presentation surfaces aren't outputs
+		private string Output(string destination)
+		{
+			switch (destination) {
+				case "VPE In-Scene DMD": case "VPE Presentation Resource": return null;
+				case "Native DMD Window": return "DMD window";
+				case "ZeDMD": return WithPort("ZeDMD", _settings?.ZeDmdPort);
+				case "PinDMD v3": return WithPort("PinDMD v3", _settings?.PinDmd3Port);
+				case "Pixelcade": return WithPort("Pixelcade", _settings?.PixelcadePort);
+				default: return destination;
+			}
+		}
+
+		private static string WithPort(string device, string port) => string.IsNullOrWhiteSpace(port) ? device : device + " (" + port.Trim() + ")";
+
 		public string DiagnosticsSection => "DMD";
 
 		public void Describe(DiagnosticsWriter writer)
 		{
 			writer.Add("plugin", DmdPluginFactory.Id);
+			writer.Add("dmddevice.ini", _dmdDeviceIni ?? "none");
 			writer.Add("colorization.library", string.IsNullOrEmpty(_colorizationLibrary) ? "not found" : _colorizationLibrary);
 			writer.Add("colorization.asset", _colorizationAsset ?? "none");
 			if (_stagedColorization != null) writer.Add("colorization.staged", _stagedColorization);
@@ -127,7 +229,7 @@ namespace VisualPinball.Engine.DMD.Player
 				await _application.Scheduler.Switch();
 				if (_bridge != null) Quiescence = _bridge.ShutdownCompletion;
 				ReleaseWhenStopped(); _presentations.Clear(); _dispatch = Array.Empty<DmdPresentationDestination>();
-				_gameSettings = null;
+				_gameSettings = null; _asset = null; _settings = null;
 				DiagnosticsContext.Remove(DiagnosticsSection);
 			}
 		}

@@ -43,17 +43,26 @@ namespace VisualPinball.Engine.DMD.Tests
 		[Test]
 		public void AmbiguousAutomaticPrefersTheFilesDmdDeviceLoads()
 		{
-			Asset("game/pin2dmd.pal"); Asset("game/pin2dmd.vni"); Asset("game/old/pin2dmd.pal"); Asset("game/old/pin2dmd.vni"); Asset("game/update.pac"); Asset("game/pin2dmd - Copy.pal"); Asset("game/old/._pin2dmd.pal");
+			Asset("game/pin2dmd.pal"); Asset("game/pin2dmd.vni"); Asset("game/old/pin2dmd.pal"); Asset("game/old/pin2dmd.vni"); Asset("game/pin2dmd - Copy.pal"); Asset("game/old/._pin2dmd.pal");
 			Assert.That(ColorizationCatalog.Select(_root, "game", "auto").Id, Is.EqualTo("game/pin2dmd.pal"));
 			Assert.That(ColorizationCatalog.Read(_root, "game").Any(asset => asset.Id.Contains("._")), Is.False, "macOS resource forks are not colorizations");
+			Asset("game/update.pac"); File.SetCreationTimeUtc(Path.Combine(_root, "game/update.pac"), new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+			Assert.That(ColorizationCatalog.Select(_root, "game", "auto"), Is.Null, "DmdDevice fails on a PAC without key and doesn't fall back to pin2dmd.pal");
+			Assert.That(ColorizationCatalog.Select(_root, "game", "auto", hasPacKey: true).Id, Is.EqualTo("game/update.pac"), "DmdDevice loads any PAC in the game folder");
 			Asset("game/pin2dmd.pac");
-			Assert.That(ColorizationCatalog.Select(_root, "game", "auto").Id, Is.EqualTo("game/pin2dmd.pal"), "a PAC without key can't be decrypted");
-			Assert.That(ColorizationCatalog.Select(_root, "game", "auto", hasPacKey: true).Id, Is.EqualTo("game/pin2dmd.pac"));
+			Assert.That(ColorizationCatalog.Select(_root, "game", "auto", hasPacKey: true).Id, Is.EqualTo("game/pin2dmd.pac"), "the newest PAC wins");
 			Asset("game/old/other.cRZ");
-			Assert.That(ColorizationCatalog.Select(_root, "game", "auto").Id, Is.EqualTo("game/pin2dmd.pal"), "Serum only counts in the game folder itself");
+			Assert.That(ColorizationCatalog.Select(_root, "game", "auto"), Is.Null, "Serum only counts in the game folder itself");
 			Asset("game/older.cROM"); File.SetCreationTimeUtc(Path.Combine(_root, "game/older.cROM"), new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
 			Asset("game/newer.cROMc");
-			Assert.That(ColorizationCatalog.Select(_root, "game", "auto").Id, Is.EqualTo("game/newer.cROMc"), "the newest Serum file wins, like the bridge");
+			Assert.That(ColorizationCatalog.Select(_root, "game", "auto").Id, Is.EqualTo("game/newer.cROMc"), "the newest Serum file wins, like the bridge, also over a PAC");
+		}
+		[Test]
+		public void AutomaticSkipsASolePacWithoutKey()
+		{
+			Asset("game/update.pac");
+			Assert.That(ColorizationCatalog.Select(_root, "game", "auto"), Is.Null);
+			Assert.That(ColorizationCatalog.Select(_root, "game", "auto", hasPacKey: true).Id, Is.EqualTo("game/update.pac"));
 		}
 		[Test]
 		public void StagingContainsOnlySelectedVariantAndReleasesOwnedCopies()
