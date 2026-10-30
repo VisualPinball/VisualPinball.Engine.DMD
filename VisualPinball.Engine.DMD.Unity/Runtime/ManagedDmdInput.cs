@@ -110,6 +110,22 @@ namespace VisualPinball.Engine.DMD.Unity
 			return _shutdownTask = StopAsync();
 		}
 
+		/// <summary>
+		/// Releases the current graph right away, for when nothing will pump the owner scheduler again (the host tearing down,
+		/// the editor leaving play mode), so the asynchronous shutdown would never get to it. Starts that shutdown if it hasn't
+		/// been. The graph's own disposal waits for its worker, or defers until it has stopped.
+		/// </summary>
+		internal void ReleaseNow()
+		{
+			_owner.VerifyOwner();
+			ShutdownAsync();
+			var pipeline = Pipeline;
+			if (pipeline == null) return;
+			_ = pipeline.StopWorkerAsync();
+			pipeline.Dispose();
+			Pipeline = null;
+		}
+
 		private async Task StopAsync()
 		{
 			if (_replacement != null) await _replacement.ConfigureAwait(false);

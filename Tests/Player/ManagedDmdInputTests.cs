@@ -132,6 +132,35 @@ namespace VisualPinball.Engine.DMD.Tests
 		}
 
 		[Test]
+		public void ReleaseNowDisposesTheGraphWithoutAnotherPump()
+		{
+			_input.Feed(Frame(new byte[] { 1, 2 }), "dmd0");
+			var shutdown = _input.ShutdownAsync();
+			_created[0].FinishStop(); // the worker stops, but the owner thread never comes back to dispose its graph
+			Assert.That(_created[0].Disposed, Is.False);
+			_input.ReleaseNow();
+			Assert.That(_created[0].Disposed, Is.True);
+			Assert.That(_input.Pipeline, Is.Null);
+			_input.Feed(Frame(new byte[] { 3, 4 }, instance: 2), "dmd0");
+			Assert.That(_created.Count, Is.EqualTo(1), "a released input takes no more frames");
+			PumpUntil(() => shutdown.IsCompleted);
+			Assert.That(shutdown.IsCompletedSuccessfully, Is.True);
+		}
+
+		[Test]
+		public void ReleaseNowDuringRebuildDisposesTheOldGraphAndCreatesNoOutput()
+		{
+			_input.Feed(Frame(new byte[] { 1, 2 }), "dmd0");
+			_input.Feed(Frame(new byte[] { 3, 4, 5, 6 }, width: 4, stride: 4), "dmd0");
+			_created[0].FinishStop();
+			_input.ReleaseNow();
+			Assert.That(_created[0].Disposed, Is.True);
+			PumpUntil(() => _input.ShutdownAsync().IsCompleted);
+			Assert.That(_created.Count, Is.EqualTo(1));
+			Assert.That(_input.Pipeline, Is.Null);
+		}
+
+		[Test]
 		public void FailedReplacementCanRetryOnTheNextFrameAndStillShutDown()
 		{
 			_input.Feed(Frame(new byte[] { 1, 2 }), "dmd0");

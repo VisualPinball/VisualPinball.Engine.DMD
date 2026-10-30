@@ -210,6 +210,13 @@ namespace VisualPinball.Engine.DMD.Unity
 		{
 			if (_managed) {
 				_shutdownTask ??= ShutdownManagedAsync();
+				if (!_shutdownTask.IsCompleted && (_ownerScheduler == null || _ownerScheduler.IsOwner)) {
+					// The stop resumes on the owner scheduler, which nothing pumps once the host tears down (the editor leaving
+					// play mode, the plugin shutdown deadline passing). Release the graph now, or its native window, and the
+					// thread behind it, outlive the game and hold up the editor's next domain reload.
+					_managedInput?.ReleaseNow();
+					_pipeline = null;
+				}
 				return;
 			}
 			if (_shutdown) { _pipeline?.Dispose(); return; }
