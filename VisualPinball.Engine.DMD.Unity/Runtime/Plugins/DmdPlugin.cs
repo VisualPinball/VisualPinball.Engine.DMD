@@ -75,7 +75,7 @@ namespace VisualPinball.Engine.DMD.Player
 				_application.Scheduler.VerifyOwner();
 				if (_stopped || _binding.Descriptor == null) throw new OperationCanceledException("The DMD game session has ended.");
 				_presentations.RemoveAll(presentation => { if (presentation.IsAvailable) return false; try { presentation.ReleaseIfDisposed(); } catch (Exception error) { _application.Logger.Warn("DMD presentation cleanup failed.", error); } return true; });
-				var destination = new DmdPresentationDestination(_application, _binding.Descriptor, _monitorMode == CabinetOutputMode.Player ? settings : null, _cabinet?.TargetsFor(SurfaceRoles.Dmd));
+				var destination = new DmdPresentationDestination(_application, _binding.Descriptor, _monitorMode == CabinetOutputMode.Player ? settings : null, _cabinet?.TargetsFor(CabinetOutputRole.Dmd));
 				_presentations.Add(destination); _dispatch = _presentations.ToArray(); return destination;
 			}, _application.Scheduler, instance => !_stopped && _binding.State == ResourceBindingState.Bound && _binding.Descriptor?.Instance == instance);
 			game.Lifetime.Own(_binding.SubscribeFrames(frame => {

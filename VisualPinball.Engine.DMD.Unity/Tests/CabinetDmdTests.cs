@@ -37,7 +37,7 @@ namespace VisualPinball.Engine.DMD.Tests
 		{
 			yield return new EnterPlayMode();
 			bool running = true; int changes = 0;
-			var targets = new[] { new CabinetDisplayTarget("fixture", SurfaceRoles.Dmd, CabinetEndpointKind.DesktopRegion, CabinetEndpointState.Available, width: 64, height: 64) };
+			var targets = new[] { new CabinetDisplayTarget("fixture", CabinetOutputRole.Dmd, CabinetEndpointKind.DesktopRegion, CabinetEndpointState.Available, width: 64, height: 64) };
 			var surface = New("ManagedDmdSurface", Style(), targets, (Action)(() => changes++), (Func<bool>)(() => running));
 			using var owned = (IDisposable)surface;
 			var desktop = (IUnityDesktopSurface)surface;
@@ -70,7 +70,7 @@ namespace VisualPinball.Engine.DMD.Tests
 			yield return new EnterPlayMode();
 			var registry = new PluginResourceRegistry(); var scheduler = new OwnerScheduler(); using var life = new ResourceScope();
 			using var pixels = new DisplayResourceSource();
-			var raw = new PluginResourceDescriptor("fixture/raw", "gle", "fixture", "Raw", SurfaceRoles.Dmd, ResourceKind.Display, 1, 1, ResourceView.Identification, DisplayEncoding.Gray4);
+			var raw = new PluginResourceDescriptor("fixture/raw", "gle", "fixture", "Raw", CabinetOutputRole.Dmd.Id(), ResourceKind.Display, 1, 1, ResourceView.Identification, DisplayEncoding.Gray4);
 			using var publication = registry.Publish(raw, pixels);
 			var destination = New("DmdPresentationDestination", Application(registry,new PluginCapabilities(),scheduler,life), raw, Style(), Array.Empty<CabinetDisplayTarget>());
 			try {
@@ -95,9 +95,9 @@ namespace VisualPinball.Engine.DMD.Tests
 		{
 			var registry = new PluginResourceRegistry(); var caps = new PluginCapabilities(); var scheduler = new OwnerScheduler(); using var life = new ResourceScope(); using var gameLife = new ResourceScope();
 			var leases = new PluginOutputLeases(); using var service = caps.Publish(UnityPluginCapability.Outputs,leases);
-			var pixel = new CabinetDeviceProfile(Provider+"/pixelcade",Provider,SurfaceRoles.Dmd,"Pixel","serial:COM5","usb:pixelcade:auto","{\"driver\":\"pixelcade\",\"PixelcadePort\":\"COM5\",\"PixelcadeColorMatrix\":\"Rgb\"}");
-			var pin = new CabinetDeviceProfile(Provider+"/pin2dmd",Provider,SurfaceRoles.Dmd,"Pin","usb:pin2dmd:auto","usb:pin2dmd:auto","{\"driver\":\"pin2dmd\",\"Pin2DmdOutputDelay\":17}");
-			using var layout = caps.Publish(CabinetDisplayCapability.Configuration,new CabinetDisplaySnapshot(1,1,1,new[] { CabinetDisplayTarget.Device("pixel",SurfaceRoles.Dmd,CabinetEndpointState.Available,pixel), CabinetDisplayTarget.Device("pin",SurfaceRoles.Dmd,CabinetEndpointState.Available,pin) },new[] { new CabinetOutputAssignment(Provider,SurfaceRoles.Dmd,mode,CabinetEndpointKind.Device) }));
+			var pixel = new CabinetDeviceProfile(Provider+"/pixelcade",Provider,CabinetOutputRole.Dmd,"Pixel","serial:COM5","usb:pixelcade:auto","{\"driver\":\"pixelcade\",\"PixelcadePort\":\"COM5\",\"PixelcadeColorMatrix\":\"Rgb\"}");
+			var pin = new CabinetDeviceProfile(Provider+"/pin2dmd",Provider,CabinetOutputRole.Dmd,"Pin","usb:pin2dmd:auto","usb:pin2dmd:auto","{\"driver\":\"pin2dmd\",\"Pin2DmdOutputDelay\":17}");
+			using var layout = caps.Publish(CabinetDisplayCapability.Configuration,new CabinetDisplaySnapshot(1,1,1,new[] { CabinetDisplayTarget.Device("pixel",CabinetOutputRole.Dmd,CabinetEndpointState.Available,pixel), CabinetDisplayTarget.Device("pin",CabinetOutputRole.Dmd,CabinetEndpointState.Available,pin) },new[] { new CabinetOutputAssignment(Provider,CabinetOutputRole.Dmd,mode,CabinetEndpointKind.Device) }));
 			using var busy = mode == CabinetOutputMode.Custom ? leases.Acquire(pixel.FamilyLeaseKey,"fixture-holder") : null;
 			using var plugin = (IDisposable)New("DmdPlugin", Application(registry,caps,scheduler,life));
 			var settings=Style(); settings.EnablePixelcade=settings.EnablePin2Dmd=settings.EnableNativeWindow=true;
@@ -118,8 +118,8 @@ namespace VisualPinball.Engine.DMD.Tests
 		{
 			var registry = new PluginResourceRegistry(); var caps = new PluginCapabilities(); var scheduler = new OwnerScheduler(); using var life = new ResourceScope(); using var gameLife = new ResourceScope();
 			var leases = new PluginOutputLeases(); using var service = caps.Publish(UnityPluginCapability.Outputs,leases);
-			var profile = new CabinetDeviceProfile(Provider+"/zedmd",Provider,SurfaceRoles.Dmd,"Fixture","serial:COM3","usb:zedmd:auto","{\"driver\":\"zedmd\",\"ZeDmdPort\":\"COM3\"}");
-			using var layout = caps.Publish(CabinetDisplayCapability.Configuration,new CabinetDisplaySnapshot(1,1,1,new[] {CabinetDisplayTarget.Device("fixture",SurfaceRoles.Dmd,CabinetEndpointState.Available,profile)},new[] { new CabinetOutputAssignment(Provider,SurfaceRoles.Dmd,CabinetOutputMode.Player), new CabinetOutputAssignment(Provider,SurfaceRoles.Dmd,CabinetOutputMode.Player,CabinetEndpointKind.Device) }));
+			var profile = new CabinetDeviceProfile(Provider+"/zedmd",Provider,CabinetOutputRole.Dmd,"Fixture","serial:COM3","usb:zedmd:auto","{\"driver\":\"zedmd\",\"ZeDmdPort\":\"COM3\"}");
+			using var layout = caps.Publish(CabinetDisplayCapability.Configuration,new CabinetDisplaySnapshot(1,1,1,new[] {CabinetDisplayTarget.Device("fixture",CabinetOutputRole.Dmd,CabinetEndpointState.Available,profile)},new[] { new CabinetOutputAssignment(Provider,CabinetOutputRole.Dmd,CabinetOutputMode.Player), new CabinetOutputAssignment(Provider,CabinetOutputRole.Dmd,CabinetOutputMode.Player,CabinetEndpointKind.Device) }));
 			using var busy = leases.Acquire(profile.FamilyLeaseKey,"fixture-holder");
 			using var plugin = (IDisposable)New("DmdPlugin", Application(registry,caps,scheduler,life));
 			var settings = Style(); settings.EnableNativeWindow=true; settings.EnableColorization=true; settings.EnablePinDmd2=true;

@@ -25,8 +25,8 @@ namespace VisualPinball.Engine.DMD.Player
 		private void ConfigureCabinetOutputs(PluginGameContext game, PluginSettingsSnapshot effective, DmdBridgeSettings settings)
 		{
 			_cabinet = game.Capabilities.Find<CabinetDisplaySnapshot>(CabinetDisplayCapability.Configuration);
-			_monitorMode = _cabinet?.ModeFor(_application.Plugin.Id, SurfaceRoles.Dmd) ?? CabinetOutputMode.Custom;
-			_deviceMode = _cabinet?.ModeFor(_application.Plugin.Id, SurfaceRoles.Dmd, CabinetEndpointKind.Device) ?? CabinetOutputMode.Custom;
+			_monitorMode = _cabinet?.ModeFor(_application.Plugin.Id, CabinetOutputRole.Dmd) ?? CabinetOutputMode.Custom;
+			_deviceMode = _cabinet?.ModeFor(_application.Plugin.Id, CabinetOutputRole.Dmd, CabinetEndpointKind.Device) ?? CabinetOutputMode.Custom;
 			if (_monitorMode != CabinetOutputMode.Custom) settings.EnableNativeWindow = false; // Override INI inheritance after effective settings resolve.
 			var leases = game.Capabilities.Require<PluginOutputLeases>(UnityPluginCapability.Outputs);
 			if (_deviceMode == CabinetOutputMode.Custom) {
@@ -40,7 +40,7 @@ namespace VisualPinball.Engine.DMD.Player
 			settings.EnableZeDmd = settings.EnablePinDmd3 = settings.EnablePixelcade = settings.EnablePin2Dmd = settings.EnablePinDmd1 = settings.EnablePinDmd2 = false;
 			if (_deviceMode != CabinetOutputMode.Player || _cabinet == null) return;
 			foreach (var target in _cabinet.Targets) {
-				if (target.Kind != CabinetEndpointKind.Device || target.Role != SurfaceRoles.Dmd) continue;
+				if (target.Kind != CabinetEndpointKind.Device || target.Role != CabinetOutputRole.Dmd) continue;
 				var profile = target.DeviceProfile;
 				if (profile?.Provider != _application.Plugin.Id) continue;
 				if (target.State != CabinetEndpointState.Available) { if (target.State == CabinetEndpointState.Unavailable) DeviceIssue(profile.Label + ": " + target.Reason); continue; }
@@ -59,7 +59,7 @@ namespace VisualPinball.Engine.DMD.Player
 		}
 
 		private static DmdDeviceProfiles.DeviceDriver Driver(CabinetDeviceProfile profile)
-			=> DmdDeviceProfiles.DeviceDrivers.FirstOrDefault(driver => profile.Id == DmdPluginFactory.Id + "/" + driver.Id && profile.Provider == DmdPluginFactory.Id && profile.Role == SurfaceRoles.Dmd)
+			=> DmdDeviceProfiles.DeviceDrivers.FirstOrDefault(driver => profile.Id == DmdPluginFactory.Id + "/" + driver.Id && profile.Provider == DmdPluginFactory.Id && profile.Role == CabinetOutputRole.Dmd)
 				?? throw new InvalidOperationException("Unknown DMD hardware profile.");
 
 		private bool Reserve(CabinetDeviceProfile profile, PluginOutputLeases leases)

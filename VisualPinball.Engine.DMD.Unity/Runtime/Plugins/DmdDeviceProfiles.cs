@@ -43,7 +43,7 @@ namespace VisualPinball.Engine.DMD.Player
 				if (driver.Port.Length > 0) values[driver.Port] = validPort ? port : "";
 				foreach (string option in driver.Options) if (settings.Value(option) is JToken value) values[option] = value.DeepClone();
 				bool available = platform == "windows" && port.Length <= 256;
-				result.Add(new CabinetDeviceProfile("org.visualpinball.dmd/" + driver.Id, "org.visualpinball.dmd", SurfaceRoles.Dmd, driver.Name + (!validPort ? " (invalid port)" : port.Length > 0 ? " (" + port + ")" : " (auto)"), key, driver.Family,
+				result.Add(new CabinetDeviceProfile("org.visualpinball.dmd/" + driver.Id, "org.visualpinball.dmd", CabinetOutputRole.Dmd, driver.Name + (!validPort ? " (invalid port)" : port.Length > 0 ? " (" + port + ")" : " (auto)"), key, driver.Family,
 					values.ToString(Formatting.None), available, platform != "windows" ? "Central hardware profiles are not certified on this platform." : port.Length > 256 ? "The port name is too long." : ""));
 			}
 			return result.AsReadOnly();

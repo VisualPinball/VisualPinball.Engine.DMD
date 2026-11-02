@@ -30,7 +30,7 @@ namespace VisualPinball.Engine.DMD.Player
 	internal sealed partial class DmdPluginFactory : IPlayerPluginFactory, IPluginSettingsProvider, ICabinetDisplayPlugin, ICabinetDeviceProfileProvider, ICabinetDisplayImportProvider
 	{
 		internal const string Id = "org.visualpinball.dmd";
-		public IReadOnlyList<string> CabinetRoles { get; } = Array.AsReadOnly(new[] { SurfaceRoles.Dmd });
+		public IReadOnlyList<CabinetOutputRole> CabinetRoles { get; } = Array.AsReadOnly(new[] { CabinetOutputRole.Dmd });
 		private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 		public PluginDescriptor Descriptor { get; } = new PluginDescriptor(Id, "DMD", "Colorizations, your in-scene DMD and native displays, with optional cabinet hardware.") { EnabledByDefault = true, Category = "Displays", Order = 20 };
 		internal static readonly PluginSettingsSchema SettingsSchema = BuildSchema();
