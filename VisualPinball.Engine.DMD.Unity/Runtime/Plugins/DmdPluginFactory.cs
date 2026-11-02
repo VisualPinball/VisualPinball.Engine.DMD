@@ -27,7 +27,7 @@ using Logger = NLog.Logger;
 
 namespace VisualPinball.Engine.DMD.Player
 {
-	internal sealed partial class DmdPluginFactory : IPlayerPluginFactory, IPluginSettingsProvider, ICabinetDisplayPlugin, ICabinetDeviceProfileProvider
+	internal sealed partial class DmdPluginFactory : IPlayerPluginFactory, IPluginSettingsProvider, ICabinetDisplayPlugin, ICabinetDeviceProfileProvider, ICabinetDisplayImportProvider
 	{
 		internal const string Id = "org.visualpinball.dmd";
 		public IReadOnlyList<string> CabinetRoles { get; } = Array.AsReadOnly(new[] { SurfaceRoles.Dmd });
