@@ -1,0 +1,21 @@
+{
+  "name": "VisualPinball.Engine.DMD.Cabinet.Tests",
+  "references": [
+    "VisualPinball.Engine.DMD.Unity",
+    "VisualPinball.Unity",
+    "VisualPinball.Plugins",
+    "UnityEngine.TestRunner",
+    "UnityEditor.TestRunner"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "nunit.framework.dll",
+    "Newtonsoft.Json.dll",
+    "LibDmd.Core.dll",
+    "LibDmd.Core.Windows.dll"
+  ],
+  "autoReferenced": true
+}

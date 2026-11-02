@@ -391,6 +391,7 @@ namespace VisualPinball.Engine.DMD.Unity
 			}
 
 			_pipeline?.Dispose();
+			_pipeline = null; // A failed replacement must not leave the old, disposed graph reachable.
 			CaptureAppliedSettings();
 			var destinations = CreateDestinations(display);
 			_destinations = DestinationNames(destinations);

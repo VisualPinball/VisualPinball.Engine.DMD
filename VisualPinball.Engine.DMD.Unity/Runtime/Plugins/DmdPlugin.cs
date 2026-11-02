@@ -19,7 +19,7 @@ using VisualPinball.Unity;
 
 namespace VisualPinball.Engine.DMD.Player
 {
-	internal sealed class DmdPlugin : PlayerPlugin, IPluginTick, IPluginEmergencyStop, IPluginDeferredCleanup, IDiagnosticsSource, IPluginStatusSource
+	internal sealed partial class DmdPlugin : PlayerPlugin, IPluginTick, IPluginRender, IPluginEmergencyStop, IPluginDeferredCleanup, IDiagnosticsSource, IPluginStatusSource
 	{
 		private readonly PluginApplicationContext _application;
 		private readonly List<DmdPresentationDestination> _presentations = new List<DmdPresentationDestination>();
@@ -61,8 +61,7 @@ namespace VisualPinball.Engine.DMD.Player
 				_stagedColorization = staged;
 			}
 			_application.Logger.Info($"Colorization for {game.Identity.Key}: {_colorizationAsset}, library {(_colorizationLibrary.Length > 0 ? _colorizationLibrary : "not found")}.");
-			var outputs = game.Capabilities.Require<PluginOutputLeases>(UnityPluginCapability.Outputs);
-			foreach (var output in OutputIds(settings)) _nativeResources.Own(outputs.Acquire(output, _application.Plugin.Id));
+			ConfigureCabinetOutputs(game, effective, settings);
 			_root = new GameObject("DMD plugin"); _root.SetActive(false); _root.transform.SetParent(scene.Table.transform, false);
 			game.Lifetime.Own(new Subscription(() => { if (_root != null) UnityEngine.Object.Destroy(_root); }));
 			_bridge = _root.AddComponent<DmdBridgePlayer>();
@@ -74,14 +73,17 @@ namespace VisualPinball.Engine.DMD.Player
 			_binding = game.Lifetime.Own(game.Resources.Bind<IPluginDisplaySource>(selection));
 			_bridge.ConfigureManaged(settings, scene.Table, () => {
 				_application.Scheduler.VerifyOwner();
-				var destination = new DmdPresentationDestination(_application, _binding.Descriptor);
-				_presentations.RemoveAll(presentation => !presentation.IsAvailable); _presentations.Add(destination); _dispatch = _presentations.ToArray(); return destination;
-			}, _application.Scheduler, instance => _binding.State == ResourceBindingState.Bound && _binding.Descriptor?.Instance == instance);
+				if (_stopped || _binding.Descriptor == null) throw new OperationCanceledException("The DMD game session has ended.");
+				_presentations.RemoveAll(presentation => { if (presentation.IsAvailable) return false; try { presentation.ReleaseIfDisposed(); } catch (Exception error) { _application.Logger.Warn("DMD presentation cleanup failed.", error); } return true; });
+				var destination = new DmdPresentationDestination(_application, _binding.Descriptor, _monitorMode == CabinetOutputMode.Player ? settings : null, _cabinet?.TargetsFor(SurfaceRoles.Dmd));
+				_presentations.Add(destination); _dispatch = _presentations.ToArray(); return destination;
+			}, _application.Scheduler, instance => !_stopped && _binding.State == ResourceBindingState.Bound && _binding.Descriptor?.Instance == instance);
 			game.Lifetime.Own(_binding.SubscribeFrames(frame => {
 				if (_bridge != null) _bridge.FeedFrame(frame, _binding.Descriptor.Id.Substring(_binding.Descriptor.Id.LastIndexOf('/') + 1));
 			}));
 			_binding.Changed += ReportBinding;
 			game.Lifetime.Own(new Subscription(() => _binding.Changed -= ReportBinding));
+			game.Lifetime.Own(new Subscription(EmergencyStop));
 			_root.SetActive(true);
 			DiagnosticsContext.Set(this);
 			return Task.CompletedTask;
@@ -146,6 +148,8 @@ namespace VisualPinball.Engine.DMD.Player
 				writer.Add("DmdDevice.ini", (folder.Length > 0 ? "from " + folder + ", " : "") + (_iniImported == 0 ? "nothing applied" : _iniImported == 1 ? "1 setting applied" : _iniImported + " settings applied"));
 			}
 			var outputs = (_bridge != null ? _bridge.Destinations : Array.Empty<string>()).Select(Output).Where(name => name != null).ToList();
+			if (_monitorMode == CabinetOutputMode.Player) outputs.Add("Player monitor");
+			foreach (string issue in _deviceIssues) writer.Add("Hardware unavailable", issue);
 			if (outputs.Count > 0) writer.Add("Outputs", string.Join(", ", outputs));
 		}
 
@@ -186,6 +190,8 @@ namespace VisualPinball.Engine.DMD.Player
 		public void Describe(DiagnosticsWriter writer)
 		{
 			writer.Add("plugin", DmdPluginFactory.Id);
+			writer.Add("monitor mode", _monitorMode.ToString()); writer.Add("hardware mode", _deviceMode.ToString());
+			foreach (string issue in _deviceIssues) writer.Add("hardware issue", issue);
 			writer.Add("dmddevice.ini", _dmdDeviceIni ?? "none");
 			writer.Add("colorization.library", string.IsNullOrEmpty(_colorizationLibrary) ? "not found" : _colorizationLibrary);
 			writer.Add("colorization.asset", _colorizationAsset ?? "none");
@@ -203,15 +209,6 @@ namespace VisualPinball.Engine.DMD.Player
 				}
 			}
 		}
-		private static IEnumerable<string> OutputIds(DmdBridgeSettings settings)
-		{
-			if (settings.EnableZeDmd) yield return string.IsNullOrWhiteSpace(settings.ZeDmdPort) ? "usb:zedmd:auto" : "serial:" + settings.ZeDmdPort.ToUpperInvariant();
-			if (settings.EnablePinDmd3) yield return string.IsNullOrWhiteSpace(settings.PinDmd3Port) ? "usb:pindmd3:auto" : "serial:" + settings.PinDmd3Port.ToUpperInvariant();
-			if (settings.EnablePixelcade) yield return string.IsNullOrWhiteSpace(settings.PixelcadePort) ? "usb:pixelcade:auto" : "serial:" + settings.PixelcadePort.ToUpperInvariant();
-			if (settings.EnablePin2Dmd) yield return "usb:pin2dmd:auto";
-			if (settings.EnablePinDmd1) yield return "usb:pindmd1:auto";
-			if (settings.EnablePinDmd2) yield return "usb:pindmd2:auto";
-		}
 		private void ReportBinding()
 		{
 			// No DMD source for the game, or it went away: something the table or settings decide.
@@ -226,6 +223,7 @@ namespace VisualPinball.Engine.DMD.Player
 		public void Tick(double unscaledSeconds) { foreach (var presentation in _dispatch) presentation.Pump(); }
 		public override async Task StopGameAsync(CancellationToken cancellation)
 		{
+			WithdrawManagedOutputs();
 			try { if (_bridge != null) await _bridge.ShutdownAsync(cancellation); }
 			finally {
 				await _application.Scheduler.Switch();
@@ -235,7 +233,7 @@ namespace VisualPinball.Engine.DMD.Player
 				DiagnosticsContext.Remove(DiagnosticsSection);
 			}
 		}
-		public void EmergencyStop() { if (_bridge != null) { _bridge.Shutdown(); Quiescence = _bridge.ShutdownCompletion; } ReleaseWhenStopped(); }
+		public void EmergencyStop() { WithdrawManagedOutputs(); if (_bridge != null) { _bridge.Shutdown(); Quiescence = _bridge.ShutdownCompletion; } ReleaseWhenStopped(); }
 		public override void Dispose() => EmergencyStop();
 		private void ReleaseWhenStopped()
 		{

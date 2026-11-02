@@ -27,15 +27,21 @@ using Logger = NLog.Logger;
 
 namespace VisualPinball.Engine.DMD.Player
 {
-	internal sealed class DmdPluginFactory : IPlayerPluginFactory, IPluginSettingsProvider
+	internal sealed partial class DmdPluginFactory : IPlayerPluginFactory, IPluginSettingsProvider, ICabinetDisplayPlugin, ICabinetDeviceProfileProvider
 	{
 		internal const string Id = "org.visualpinball.dmd";
+		public IReadOnlyList<string> CabinetRoles { get; } = Array.AsReadOnly(new[] { SurfaceRoles.Dmd });
 		private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 		public PluginDescriptor Descriptor { get; } = new PluginDescriptor(Id, "DMD", "Colorizations, your in-scene DMD and native displays, with optional cabinet hardware.") { EnabledByDefault = true, Category = "Displays", Order = 20 };
 		internal static readonly PluginSettingsSchema SettingsSchema = BuildSchema();
 		public PluginSettingsSchema Schema => SettingsSchema;
 		public IPluginSettingsProvider SettingsProvider => this;
 		public IPlayerPlugin Create(PluginApplicationContext context) => new DmdPlugin(context);
+		public IReadOnlyList<CabinetDeviceProfile> GetDeviceProfiles(CabinetDeviceProfileRequest request)
+		{
+			var settings = WithDmdDeviceIni(request.Settings, new HashSet<string>(request.SavedKeys, StringComparer.Ordinal), "", out _, out _);
+			return DmdDeviceProfiles.Create(settings, request.Platform);
+		}
 		[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
 		private static void Register() => PlayerPluginRegistry.Register(new DmdPluginFactory());
 		private static PluginField Field(string id, string label, SettingKind kind, JToken value, string provider = "", double? minimum = null, double? maximum = null)
@@ -67,7 +73,7 @@ namespace VisualPinball.Engine.DMD.Player
 				Hardware("EnablePixelcade", "Pixelcade", SettingKind.Boolean, false), Hardware("PixelcadePort", "Pixelcade port", SettingKind.Text, ""), Hardware("PixelcadeColorMatrix", "Pixelcade color order", SettingKind.Choice, "Rgb", "matrices"),
 				Hardware("EnablePin2Dmd", "PIN2DMD", SettingKind.Boolean, false), Hardware("Pin2DmdOutputDelay", "PIN2DMD delay (ms)", SettingKind.Integer, 25, minimum: 0, maximum: 1000),
 				Hardware("EnablePinDmd1", "PinDMD 1", SettingKind.Boolean, false), Hardware("EnablePinDmd2", "PinDMD 2", SettingKind.Boolean, false)),
-			new PluginSettingsGroup("Appearance", "Presentation settings apply to native DMD windows.",
+			new PluginSettingsGroup("Appearance", "Presentation settings apply to native and Player-managed DMD monitors.",
 				Field("DotSize", "Dot size", SettingKind.Number, 0.92, minimum: 0.05, maximum: 1.5), Field("DotRounding", "Rounding", SettingKind.Number, 1, minimum: 0, maximum: 1), Field("DotSharpness", "Sharpness", SettingKind.Number, 0.8, minimum: 0, maximum: 1),
 				Field("Brightness", "Brightness", SettingKind.Number, 0.95, minimum: 0, maximum: 4), Field("DotGlow", "Dot glow", SettingKind.Number, 0, minimum: 0, maximum: 4), Field("BackGlow", "Background glow", SettingKind.Number, 0, minimum: 0, maximum: 4), Field("Gamma", "Gamma", SettingKind.Number, 1, minimum: 0.1, maximum: 4),
 				Field("UnlitDot", "Unlit dot color", SettingKind.Color, "#000000"), Field("GlassColor", "Glass color", SettingKind.Color, "#000000"), Field("GlassLighting", "Glass lighting", SettingKind.Number, 0, minimum: 0, maximum: 4)),
