@@ -190,7 +190,7 @@ namespace VisualPinball.Engine.DMD.Player
 		public void Describe(DiagnosticsWriter writer)
 		{
 			writer.Add("plugin", DmdPluginFactory.Id);
-			writer.Add("monitor mode", _monitorMode.ToString()); writer.Add("hardware mode", _deviceMode.ToString());
+			writer.Add("monitor mode", _monitorMode.ToString());
 			foreach (string issue in _deviceIssues) writer.Add("hardware issue", issue);
 			writer.Add("dmddevice.ini", _dmdDeviceIni ?? "none");
 			writer.Add("colorization.library", string.IsNullOrEmpty(_colorizationLibrary) ? "not found" : _colorizationLibrary);

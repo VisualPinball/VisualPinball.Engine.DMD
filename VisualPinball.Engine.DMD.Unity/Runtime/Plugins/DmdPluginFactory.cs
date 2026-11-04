@@ -27,7 +27,7 @@ using Logger = NLog.Logger;
 
 namespace VisualPinball.Engine.DMD.Player
 {
-	internal sealed partial class DmdPluginFactory : IPlayerPluginFactory, IPluginSettingsProvider, ICabinetDisplayPlugin, ICabinetDeviceProfileProvider, ICabinetDisplayImportProvider
+	internal sealed partial class DmdPluginFactory : IPlayerPluginFactory, IPluginSettingsProvider, ICabinetDisplayPlugin
 	{
 		internal const string Id = "org.visualpinball.dmd";
 		public IReadOnlyList<CabinetOutputRole> CabinetRoles { get; } = Array.AsReadOnly(new[] { CabinetOutputRole.Dmd });
@@ -37,11 +37,6 @@ namespace VisualPinball.Engine.DMD.Player
 		public PluginSettingsSchema Schema => SettingsSchema;
 		public IPluginSettingsProvider SettingsProvider => this;
 		public IPlayerPlugin Create(PluginApplicationContext context) => new DmdPlugin(context);
-		public IReadOnlyList<CabinetDeviceProfile> GetDeviceProfiles(CabinetDeviceProfileRequest request)
-		{
-			var settings = WithDmdDeviceIni(request.Settings, new HashSet<string>(request.SavedKeys, StringComparer.Ordinal), "", out _, out _);
-			return DmdDeviceProfiles.Create(settings, request.Platform);
-		}
 		[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
 		private static void Register() => PlayerPluginRegistry.Register(new DmdPluginFactory());
 		private static PluginField Field(string id, string label, SettingKind kind, JToken value, string provider = "", double? minimum = null, double? maximum = null)

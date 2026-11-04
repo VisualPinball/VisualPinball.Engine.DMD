@@ -27,7 +27,7 @@ namespace VisualPinball.Engine.DMD.Player
 		public ManagedDmdSurface(DmdBridgeSettings settings, IReadOnlyList<CabinetDisplayTarget> targets, Action changed, Func<bool> running)
 		{
 			_changed = changed; _running = running;
-			foreach (var target in targets) if (target.Kind == CabinetEndpointKind.DesktopRegion && target.State == CabinetEndpointState.Available) {
+			foreach (var target in targets) if (target.State == CabinetEndpointState.Available) {
 				_requestedWidth = Math.Max(_requestedWidth, target.Width); _requestedHeight = Math.Max(_requestedHeight, target.Height);
 			}
 			var shader = UnityEngine.Resources.Load<Shader>("CabinetDmd");

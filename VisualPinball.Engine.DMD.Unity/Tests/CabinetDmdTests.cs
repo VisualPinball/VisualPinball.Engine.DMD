@@ -37,7 +37,7 @@ namespace VisualPinball.Engine.DMD.Tests
 		{
 			yield return new EnterPlayMode();
 			bool running = true; int changes = 0;
-			var targets = new[] { new CabinetDisplayTarget("fixture", CabinetOutputRole.Dmd, CabinetEndpointKind.DesktopRegion, CabinetEndpointState.Available, width: 64, height: 64) };
+			var targets = new[] { new CabinetDisplayTarget("fixture", CabinetOutputRole.Dmd, CabinetEndpointState.Available, width: 64, height: 64) };
 			var surface = New("ManagedDmdSurface", Style(), targets, (Action)(() => changes++), (Func<bool>)(() => running));
 			using var owned = (IDisposable)surface;
 			var desktop = (IUnityDesktopSurface)surface;
@@ -91,26 +91,21 @@ namespace VisualPinball.Engine.DMD.Tests
 		[TestCase(CabinetOutputMode.Player)]
 		[TestCase(CabinetOutputMode.Custom)]
 		[TestCase(CabinetOutputMode.Off)]
-		public void ProfilesApplyTypedOptionsAndStopReleasesOnlySuccessfullyAcquiredKeys(CabinetOutputMode mode)
+		public void HardwareFollowsOwnSettingsWhateverTheMonitorModeAndStopReleasesItsKeys(CabinetOutputMode mode)
 		{
 			var registry = new PluginResourceRegistry(); var caps = new PluginCapabilities(); var scheduler = new OwnerScheduler(); using var life = new ResourceScope(); using var gameLife = new ResourceScope();
 			var leases = new PluginOutputLeases(); using var service = caps.Publish(UnityPluginCapability.Outputs,leases);
-			var pixel = new CabinetDeviceProfile(Provider+"/pixelcade",Provider,CabinetOutputRole.Dmd,"Pixel","serial:COM5","usb:pixelcade:auto","{\"driver\":\"pixelcade\",\"PixelcadePort\":\"COM5\",\"PixelcadeColorMatrix\":\"Rgb\"}");
-			var pin = new CabinetDeviceProfile(Provider+"/pin2dmd",Provider,CabinetOutputRole.Dmd,"Pin","usb:pin2dmd:auto","usb:pin2dmd:auto","{\"driver\":\"pin2dmd\",\"Pin2DmdOutputDelay\":17}");
-			using var layout = caps.Publish(CabinetDisplayCapability.Configuration,new CabinetDisplaySnapshot(1,1,1,new[] { CabinetDisplayTarget.Device("pixel",CabinetOutputRole.Dmd,CabinetEndpointState.Available,pixel), CabinetDisplayTarget.Device("pin",CabinetOutputRole.Dmd,CabinetEndpointState.Available,pin) },new[] { new CabinetOutputAssignment(Provider,CabinetOutputRole.Dmd,mode,CabinetEndpointKind.Device) }));
-			using var busy = mode == CabinetOutputMode.Custom ? leases.Acquire(pixel.FamilyLeaseKey,"fixture-holder") : null;
+			using var layout = caps.Publish(CabinetDisplayCapability.Configuration,new CabinetDisplaySnapshot(1,1,1,Array.Empty<CabinetDisplayTarget>(),new[] { new CabinetOutputAssignment(Provider,CabinetOutputRole.Dmd,mode) }));
 			using var plugin = (IDisposable)New("DmdPlugin", Application(registry,caps,scheduler,life));
 			var settings=Style(); settings.EnablePixelcade=settings.EnablePin2Dmd=settings.EnableNativeWindow=true;
 			var effective=new PluginSettingsSnapshot(1); effective.Values["EnablePixelcade"]=true; effective.Values["EnablePin2Dmd"]=true; effective.Values["PixelcadePort"]="COM5";
 			var game=new PluginGameContext(new GameIdentity("test","fixture"),"","","fixture",1,effective,caps,registry,gameLife,CancellationToken.None);
 			Call(plugin,"ConfigureCabinetOutputs",game,effective,settings);
-			Assert.That(settings.EnableNativeWindow,Is.True,"Hardware adoption cannot change Custom monitor output.");
-			Assert.That(settings.EnablePixelcade,Is.EqualTo(mode==CabinetOutputMode.Player)); Assert.That(settings.EnablePin2Dmd,Is.EqualTo(mode!=CabinetOutputMode.Off));
-			if(mode==CabinetOutputMode.Player) { Assert.That(settings.PixelcadePort,Is.EqualTo("COM5")); Assert.That(settings.PixelcadeColorMatrix.ToString(),Is.EqualTo("Rgb")); Assert.That(settings.Pin2DmdOutputDelay,Is.EqualTo(17)); }
-			Assert.That(leases.Owner(pixel.LeaseKey),Is.EqualTo(mode==CabinetOutputMode.Player ? Provider : null));
+			Assert.That(settings.EnableNativeWindow,Is.EqualTo(mode==CabinetOutputMode.Custom),"Only the monitor output follows the player.");
+			Assert.That(settings.EnablePixelcade,Is.True); Assert.That(settings.EnablePin2Dmd,Is.True);
+			Assert.That(leases.Owner("serial:COM5"),Is.EqualTo(Provider)); Assert.That(leases.Owner("usb:pixelcade:auto"),Is.EqualTo(Provider)); Assert.That(leases.Owner("usb:pin2dmd:auto"),Is.EqualTo(Provider));
 			((Task)Call(plugin,"StopGameAsync",CancellationToken.None)).GetAwaiter().GetResult();
-			Assert.That(leases.Owner(pixel.LeaseKey),Is.Null); Assert.That(leases.Owner(pin.LeaseKey),Is.Null);
-			Assert.That(leases.Owner(pixel.FamilyLeaseKey),Is.EqualTo(mode==CabinetOutputMode.Custom ? "fixture-holder" : null));
+			Assert.That(leases.Owner("serial:COM5"),Is.Null); Assert.That(leases.Owner("usb:pixelcade:auto"),Is.Null); Assert.That(leases.Owner("usb:pin2dmd:auto"),Is.Null);
 		}
 
 		[Test]
@@ -118,15 +113,16 @@ namespace VisualPinball.Engine.DMD.Tests
 		{
 			var registry = new PluginResourceRegistry(); var caps = new PluginCapabilities(); var scheduler = new OwnerScheduler(); using var life = new ResourceScope(); using var gameLife = new ResourceScope();
 			var leases = new PluginOutputLeases(); using var service = caps.Publish(UnityPluginCapability.Outputs,leases);
-			var profile = new CabinetDeviceProfile(Provider+"/zedmd",Provider,CabinetOutputRole.Dmd,"Fixture","serial:COM3","usb:zedmd:auto","{\"driver\":\"zedmd\",\"ZeDmdPort\":\"COM3\"}");
-			using var layout = caps.Publish(CabinetDisplayCapability.Configuration,new CabinetDisplaySnapshot(1,1,1,new[] {CabinetDisplayTarget.Device("fixture",CabinetOutputRole.Dmd,CabinetEndpointState.Available,profile)},new[] { new CabinetOutputAssignment(Provider,CabinetOutputRole.Dmd,CabinetOutputMode.Player), new CabinetOutputAssignment(Provider,CabinetOutputRole.Dmd,CabinetOutputMode.Player,CabinetEndpointKind.Device) }));
-			using var busy = leases.Acquire(profile.FamilyLeaseKey,"fixture-holder");
+			using var layout = caps.Publish(CabinetDisplayCapability.Configuration,new CabinetDisplaySnapshot(1,1,1,Array.Empty<CabinetDisplayTarget>(),new[] { new CabinetOutputAssignment(Provider,CabinetOutputRole.Dmd,CabinetOutputMode.Player) }));
+			using var busy = leases.Acquire("usb:zedmd:auto","fixture-holder");
 			using var plugin = (IDisposable)New("DmdPlugin", Application(registry,caps,scheduler,life));
-			var settings = Style(); settings.EnableNativeWindow=true; settings.EnableColorization=true; settings.EnablePinDmd2=true;
-			var effective = new PluginSettingsSnapshot(1); var game = new PluginGameContext(new GameIdentity("test","fixture"),"","","fixture",1,effective,caps,registry,gameLife,CancellationToken.None);
+			var settings = Style(); settings.EnableNativeWindow=true; settings.EnableColorization=true; settings.EnableZeDmd=true; settings.EnablePinDmd2=true;
+			var effective = new PluginSettingsSnapshot(1); effective.Values["EnableZeDmd"]=true; effective.Values["ZeDmdPort"]="COM3"; effective.Values["EnablePinDmd2"]=true;
+			var game = new PluginGameContext(new GameIdentity("test","fixture"),"","","fixture",1,effective,caps,registry,gameLife,CancellationToken.None);
 			Call(plugin,"ConfigureCabinetOutputs",game,effective,settings);
-			Assert.That(settings.EnableZeDmd,Is.False); Assert.That(settings.EnablePinDmd2,Is.False); Assert.That(settings.EnableNativeWindow,Is.False); Assert.That(settings.EnableColorization,Is.True);
-			Assert.That(leases.Owner(profile.LeaseKey),Is.Null,"A failed family lease must release the already acquired serial key.");
+			Assert.That(settings.EnableZeDmd,Is.False); Assert.That(settings.EnablePinDmd2,Is.True); Assert.That(settings.EnableNativeWindow,Is.False); Assert.That(settings.EnableColorization,Is.True);
+			Assert.That(leases.Owner("serial:COM3"),Is.Null,"A failed family lease must release the already acquired serial key.");
+			Assert.That(leases.Owner("usb:zedmd:auto"),Is.EqualTo("fixture-holder"));
 		}
 	}
 }

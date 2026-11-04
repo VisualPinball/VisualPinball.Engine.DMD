@@ -8,7 +8,7 @@
 	</PropertyGroup>
 	<ItemGroup>
 		<ProjectReference Include="$(VpeSourceRoot)/VisualPinball.Plugins/VisualPinball.Plugins.csproj" />
-		<Compile Include="../../VisualPinball.Engine.DMD.Unity/Runtime/Plugins/DmdDeviceProfiles.cs" Link="DmdDeviceProfiles.cs" />
+		<Compile Include="../../VisualPinball.Engine.DMD.Unity/Runtime/Plugins/DmdHardware.cs" Link="DmdHardware.cs" />
 		<Compile Include="../../VisualPinball.Engine.DMD.Unity/Runtime/Plugins/ColorizationCatalog.cs" Link="ColorizationCatalog.cs" />
 		<Compile Include="../../VisualPinball.Engine.DMD.Unity/Runtime/ManagedDmdInput.cs" Link="ManagedDmdInput.cs" />
 		<!-- with VpeTypes.cs standing in for the VisualPinball.Unity types it uses -->
