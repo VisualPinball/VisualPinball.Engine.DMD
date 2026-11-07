@@ -12,7 +12,7 @@
   "unity": "6000.5",
   "unityRelease": "0f1",
   "dependencies": {
-    "org.visualpinball.engine.unity": "0.0.1-preview.212"
+    "org.visualpinball.engine.unity": "0.0.1-preview.238"
   },
   "author": "freezy <freezy@vpdb.io>",
   "documentationUrl": "https://docs.visualpinball.org/",
