@@ -96,6 +96,10 @@ altcolor path is empty, it uses the `DMDDEVICE_CONFIG` folder's `altcolor` direc
 VPM folder lookup. Serum is tried first, then VNI/PAL/PAC, with `[global] vni.key` and
 `[global] vni.scalermode` honored.
 
+### Shared table folders in the VPE Player
+
+The Player plugin's Automatic mode checks beside the `.vpe` package before using the configured colorization library. It looks in `serum/<provider>/<game>/` for `<game>.cROMc` or `<game>.cRZ`, then in `vni/<provider>/<game>/` for `<game>.pal` or `pin2dmd.pal` with an optional same-stem `.vni`. Each also accepts a bare `<game>/` directory. For PinMAME games, `pinmame/altcolor/<game>/` beside the package is the final local fallback for these formats. Use the configured library for `.cROM`, `.fsq`, and `.pac` assets.
+
 ## License
 
 This plugin is licensed under the GPL-2.0 license, matching DMD Extensions / LibDmd, which it builds

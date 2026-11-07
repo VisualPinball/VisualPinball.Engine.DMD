@@ -91,7 +91,11 @@ namespace VisualPinball.Engine.DMD.Player
 			var choices = new List<PluginChoice>();
 			switch (provider) {
 				case "colorizations":
-					choices.Add(new PluginChoice("auto", "Automatic", "Uses the sole available colorization, or what DmdDevice loads from the game folder: Serum first, then the newest .pac, which needs a PAC key (without one, no colorization), then pin2dmd.pal and .vni. Otherwise select one.")); choices.Add(new PluginChoice("none", "No colorization"));
+					var local = request.Game.HasValue ? ColorizationCatalog.FindTableAsset(request.Package?.Path, request.Game.Value) : null;
+					choices.Add(new PluginChoice("auto", "Automatic", local != null
+						? "Uses " + local.Label + " from the table folder."
+						: "Looks beside the table first, then uses what DmdDevice would load from the library. Select a library entry to override Automatic."));
+					choices.Add(new PluginChoice("none", "No colorization"));
 					foreach (var asset in ColorizationCatalog.Read(Library(request.Settings, request.Game?.Key), request.Game?.Key ?? "")) choices.Add(new PluginChoice(asset.Id, asset.Label, available: !asset.RequiresKey || PacKey(request.Settings).Length > 0, unavailableReason: "A PAC key is required."));
 					break;
 				case "scalers": foreach (string name in Enum.GetNames(typeof(ScalerMode))) choices.Add(new PluginChoice(name, name)); break;
@@ -145,7 +149,8 @@ namespace VisualPinball.Engine.DMD.Player
 			foreach (string field in new[] { "UnlitDot", "GlassColor" }) if (!ColorUtility.TryParseHtmlString(request.Settings.String(field), out _)) issues.Add(new PluginValidationIssue(field, "Enter a color such as #FFAA00."));
 			if (request.Game.HasValue) try {
 				bool hasKey = PacKey(request.Settings).Length > 0;
-				var asset = ColorizationCatalog.Select(Library(request.Settings, request.Game.Value.Key), request.Game.Value.Key, request.Settings.String("Colorization", "auto"), hasKey);
+				var asset = ColorizationCatalog.Select(Library(request.Settings, request.Game.Value.Key), request.Package?.Path,
+					request.Game.Value, request.Settings.String("Colorization", "auto"), hasKey);
 				if (asset?.RequiresKey == true && !hasKey) issues.Add(new PluginValidationIssue("VniKey", "A PAC key is required."));
 			} catch (Exception error) { issues.Add(new PluginValidationIssue("Colorization", error.Message)); }
 			return issues;

@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using NUnit.Framework;
 using VisualPinball.Engine.DMD.Player;
+using VisualPinball.Plugins;
 
 namespace VisualPinball.Engine.DMD.Tests
 {
@@ -20,7 +21,36 @@ namespace VisualPinball.Engine.DMD.Tests
 		[TearDown] public void TearDown() { if (Directory.Exists(_root)) Directory.Delete(_root, true); }
 		private string Asset(string path)
 		{
-			string file = Path.Combine(_root, path); Directory.CreateDirectory(Path.GetDirectoryName(file)); File.WriteAllText(file, path); return file;
+			string file = Path.GetFullPath(Path.Combine(_root, path)); Directory.CreateDirectory(Path.GetDirectoryName(file)); File.WriteAllText(file, path); return file;
+		}
+		[Test]
+		public void AutomaticUsesEachTablesOwnMediaAndRetainsLibraryChoices()
+		{
+			var game = new GameIdentity("pinmame", "game");
+			string first = Asset("First/Release.vpe");
+			string second = Asset("Second/Release.vpe");
+			string scoped = Asset("First/Serum/PinMAME/GAME/GAME.cROMc");
+			Asset("First/Serum/game/game.crz");
+			string vni = Asset("Second/vni/game/game.pal");
+			string animation = Asset("Second/vni/game/game.VNI");
+			string global = Asset("Global/game/game.crz");
+			string library = Path.Combine(_root, "Global");
+
+			Assert.That(ColorizationCatalog.Select(library, first, game, "auto", false).Files, Is.EqualTo(new[] { scoped }));
+			Assert.That(ColorizationCatalog.Select(library, second, game, "auto", false).Files, Is.EqualTo(new[] { vni, animation }));
+			Assert.That(ColorizationCatalog.Select(library, first, game, "game/game.crz", false).Files, Is.EqualTo(new[] { global }));
+			Assert.That(ColorizationCatalog.Select(library, second, game, "none", false), Is.Null);
+			File.Delete(vni);
+			Assert.That(ColorizationCatalog.Select(library, second, game, "auto", false).Files, Is.EqualTo(new[] { global }));
+		}
+
+		[Test]
+		public void LegacyAltcolorIsPinMameOnly()
+		{
+			string table = Asset("Table/Release.vpe");
+			string legacy = Asset("Table/pinmame/altcolor/game/PIN2DMD.PAL");
+			Assert.That(ColorizationCatalog.FindTableAsset(table, new GameIdentity("pinmame", "game")).Files, Is.EqualTo(new[] { legacy }));
+			Assert.That(ColorizationCatalog.FindTableAsset(table, new GameIdentity("another-controller", "game")), Is.Null);
 		}
 		[Test]
 		public void VariantsHaveStableIdsAndKeepPaletteAnimationsTogether()
