@@ -12,14 +12,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # The proxy builds against LibDmd.Core from dmd-extensions (referenced by path until it's
-      # published as a NuGet package). Check it out as a sibling and point LibDmdExtensionsRoot at it.
-      # NOTE: LibDmd.Core currently lives on the 'core' branch; update the ref once it merges.
+      # Pin the dmd-extensions source used to build the LibDmd.Core proxy.
       - name: Checkout dmd-extensions
         uses: actions/checkout@v4
         with:
           repository: freezy/dmd-extensions
-          ref: core
+          ref: 9387c66046a1390cd81170c4defe3710f59ec8cd
           path: dmd-extensions
 
       - uses: actions/setup-dotnet@v4
