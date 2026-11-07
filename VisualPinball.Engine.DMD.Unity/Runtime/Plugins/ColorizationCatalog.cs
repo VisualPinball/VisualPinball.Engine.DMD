@@ -46,6 +46,42 @@ namespace VisualPinball.Engine.DMD.Player
 		private static bool InGameFolder(ColorizationAsset asset, string game) => asset.Id.StartsWith(game + "/", StringComparison.OrdinalIgnoreCase) && asset.Id.IndexOf('/', game.Length + 1) < 0;
 		private static bool IsSerum(string file) => Path.GetExtension(file).ToLowerInvariant() is ".crz" or ".crom" or ".cromc";
 		private static string Relative(string root, string file) => Path.GetRelativePath(root, file).Replace('\\', '/');
+
+		internal static ColorizationAsset FindTableAsset(string packagePath, GameIdentity game)
+		{
+			string table = Path.GetDirectoryName(packagePath);
+			foreach (string folder in TableMediaPaths.GameDirectories(TableMediaPaths.FindDirectory(table, "serum"), game)) {
+				var asset = FindSerum(folder, game.Key);
+				if (asset != null) return asset;
+			}
+			foreach (string folder in TableMediaPaths.GameDirectories(TableMediaPaths.FindDirectory(table, "vni"), game)) {
+				var asset = FindVni(folder, game.Key);
+				if (asset != null) return asset;
+			}
+			if (game.Provider != "pinmame") return null;
+			string legacy = TableMediaPaths.FindDirectory(table, "pinmame", "altcolor", game.Key);
+			return legacy == null ? null : FindSerum(legacy, game.Key) ?? FindVni(legacy, game.Key);
+		}
+
+		private static ColorizationAsset FindSerum(string folder, string game)
+		{
+			string file = TableMediaPaths.FindFile(folder, game + ".cROMc") ?? TableMediaPaths.FindFile(folder, game + ".cRZ");
+			return file == null ? null : new ColorizationAsset(game + "/" + Path.GetFileName(file), Path.GetFileNameWithoutExtension(file) + " · Serum", file);
+		}
+
+		private static ColorizationAsset FindVni(string folder, string game)
+		{
+			string palette = TableMediaPaths.FindFile(folder, game + ".pal") ?? TableMediaPaths.FindFile(folder, "pin2dmd.pal");
+			if (palette == null) return null;
+			string stem = Path.GetFileNameWithoutExtension(palette);
+			string animation = TableMediaPaths.FindFile(folder, stem + ".vni");
+			return new ColorizationAsset(game + "/" + Path.GetFileName(palette), stem + (animation == null ? " · Palette" : " · VNI/PAL"),
+				animation == null ? new[] { palette } : new[] { palette, animation });
+		}
+
+		internal static ColorizationAsset Select(string root, string packagePath, GameIdentity game, string selection, bool hasPacKey)
+			=> (selection == "auto" ? FindTableAsset(packagePath, game) : null) ?? Select(root, game.Key, selection, hasPacKey);
+
 		/// <param name="hasPacKey">Whether a PAC key is configured. Without one, automatic selection skips PAC files and doesn't fall
 		/// back to pin2dmd.pal next to a PAC, since DmdDevice fails to load such a folder and shows the uncolorized frames.</param>
 		internal static ColorizationAsset Select(string root, string game, string selection, bool hasPacKey = false)

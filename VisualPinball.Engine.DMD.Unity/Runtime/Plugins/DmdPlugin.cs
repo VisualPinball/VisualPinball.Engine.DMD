@@ -50,7 +50,8 @@ namespace VisualPinball.Engine.DMD.Player
 			settings.RomName = game.Identity.Key;
 			_gameSettings = effective;
 			_colorizationLibrary = DmdPluginFactory.Library(effective, game.Identity.Key);
-			var asset = ColorizationCatalog.Select(_colorizationLibrary, game.Identity.Key, effective.String("Colorization", "auto"), effective.String("VniKey").Length > 0);
+			var asset = ColorizationCatalog.Select(_colorizationLibrary, game.PackagePath, game.Identity,
+				effective.String("Colorization", "auto"), effective.String("VniKey").Length > 0);
 			settings.EnableColorization = asset != null;
 			_asset = asset; _settings = settings;
 			_noColorizationReason = asset != null ? null : NoColorizationReason(game.Identity.Key, effective);
@@ -60,7 +61,7 @@ namespace VisualPinball.Engine.DMD.Player
 				settings.AltColorPath = staged;
 				_stagedColorization = staged;
 			}
-			_application.Logger.Info($"Colorization for {game.Identity.Key}: {_colorizationAsset}, library {(_colorizationLibrary.Length > 0 ? _colorizationLibrary : "not found")}.");
+			_application.Logger.Info($"Colorization for {game.Identity.Key}: {_colorizationAsset}, source {asset?.Files[0] ?? _colorizationLibrary}.");
 			ConfigureCabinetOutputs(game, effective, settings);
 			_root = new GameObject("DMD plugin"); _root.SetActive(false); _root.transform.SetParent(scene.Table.transform, false);
 			game.Lifetime.Own(new Subscription(() => { if (_root != null) UnityEngine.Object.Destroy(_root); }));
