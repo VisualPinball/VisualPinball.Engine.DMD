@@ -1,6 +1,6 @@
 {
   "name": "org.visualpinball.engine.dmd",
-  "version": "0.0.1-preview.3",
+  "version": "0.0.1-preview.4",
   "displayName": "Visual Pinball Engine (DMD)",
   "description": "DMD Extensions / LibDmd support for VPE.",
   "keywords": [
