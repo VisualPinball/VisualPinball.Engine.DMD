@@ -9,9 +9,7 @@ native window, and the in-scene DMD — all from one shared, colorized frame pip
 
 This project contains two root folders:
 
-- `VisualPinball.Engine.DMD` wraps the cross-platform `LibDmd.Core` library (from dmd-extensions)
-  and supplies the Unity plugins. It currently builds against local `dmd-extensions` projects and
-  copies the managed assemblies and per-platform native binaries into the Unity package.
+- `VisualPinball.Engine.DMD` wraps `LibDmd.Core` and deploys its managed assemblies and per-platform native binaries to the Unity package.
 - `VisualPinball.Engine.DMD.Unity` is the UPM package that integrates with VPE.
 
 ## Unity Package
@@ -24,13 +22,10 @@ necessary binaries into the Unity folder (see Development Setup).
 
 ## Development Setup
 
-For local development, clone the repository and build the proxy project first. This builds
-`LibDmd.Core` (with the Windows and SDL/GL-ES backends and the serial shim) and deploys the binaries
-into the Unity package — the managed assemblies into `Plugins/Managed` as a single, shared "Any
-Platform" copy, and the native libraries into `Plugins/<rid>`.
+Build the proxy from this repository's root before opening Unity. The build restores LibDmd, its display backends, the Unity serial shim, and the platform native libraries from NuGet. It copies the managed assemblies to `Plugins/Managed` and the native libraries to `Plugins/<rid>`.
 
 ```bash
-dotnet build VisualPinball.Engine.DMD/VisualPinball.Engine.DMD.csproj
+dotnet build VisualPinball.Engine.DMD/VisualPinball.Engine.DMD.csproj -c Release
 ```
 
 Restart Unity after rebuilding the plugin binaries; the editor keeps loaded DLLs locked and cannot

@@ -12,31 +12,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Pin the dmd-extensions source used to build the LibDmd.Core proxy.
-      - name: Checkout dmd-extensions
-        uses: actions/checkout@v4
-        with:
-          repository: freezy/dmd-extensions
-          ref: 9387c66046a1390cd81170c4defe3710f59ec8cd
-          path: dmd-extensions
-
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      # Stages libserum/libzedmd (downloaded) + the vendored libusb/ftd2xx into
-      # dmd-extensions/native/nuget/runtimes, which the proxy's PluginsDeploy copies per RID.
-      - name: Stage native binaries
-        run: ./dmd-extensions/build-nuget/fetch-natives.sh
-
-      # DMD natives are prebuilt (not compiled here), so a single runner builds every RID. Each build
+      # The LibDmd managed and native dependencies come from NuGet. Each build
       # deploys the managed assemblies to Plugins/Managed (shared) and the natives to Plugins/<rid>.
       - name: Build proxy (all RIDs)
         run: |
           for rid in win-x64 osx-x64 osx-arm64 linux-x64; do
-            dotnet build VisualPinball.Engine.DMD/VisualPinball.Engine.DMD.csproj \
-              -c Release -r "$rid" \
-              -p:LibDmdExtensionsRoot="$GITHUB_WORKSPACE/dmd-extensions"
+            dotnet build VisualPinball.Engine.DMD/VisualPinball.Engine.DMD.csproj -c Release -r "$rid"
           done
 
       - uses: actions/upload-artifact@v4

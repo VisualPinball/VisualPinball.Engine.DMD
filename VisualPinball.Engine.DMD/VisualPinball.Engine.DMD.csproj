@@ -7,14 +7,6 @@
     <LangVersion>9.0</LangVersion>
     <Nullable>disable</Nullable>
     <RuntimeIdentifiers>win-x64;linux-x64;osx-x64;osx-arm64</RuntimeIdentifiers>
-    <LibDmdExtensionsRoot Condition="'$(LibDmdExtensionsRoot)' == ''">C:\Development\dmd-extensions</LibDmdExtensionsRoot>
-    <LibDmdCoreProject>$(LibDmdExtensionsRoot)\LibDmd.Core\LibDmd.Core.csproj</LibDmdCoreProject>
-    <LibDmdCoreWindowsProject>$(LibDmdExtensionsRoot)\LibDmd.Core.Windows\LibDmd.Core.Windows.csproj</LibDmdCoreWindowsProject>
-    <LibDmdCoreSdlProject>$(LibDmdExtensionsRoot)\LibDmd.Core.Sdl\LibDmd.Core.Sdl.csproj</LibDmdCoreSdlProject>
-    <LibDmdSerialShimProject>$(LibDmdExtensionsRoot)\LibDmd.Core.SerialShim\LibDmd.Core.SerialShim.csproj</LibDmdSerialShimProject>
-    <LibDmdSerialShimDll>$(LibDmdExtensionsRoot)\LibDmd.Core.SerialShim\bin\$(Configuration)\netstandard2.0\System.IO.Ports.dll</LibDmdSerialShimDll>
-    <LibDmdNativeRoot>$(LibDmdExtensionsRoot)\native\nuget\runtimes</LibDmdNativeRoot>
-    <LibDmdCostura64Root>$(LibDmdExtensionsRoot)\LibDmd\Costura64</LibDmdCostura64Root>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(RuntimeIdentifier)' == ''">
@@ -25,25 +17,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="$(LibDmdCoreProject)" />
-    <!-- Built but NOT compile-referenced (ReferenceOutputAssembly=false): PluginsDeploy ships its
-         output AS System.IO.Ports.dll. The real net6.0+ System.IO.Ports can't load under Unity's
-         Mono (TypeLoadException on SerialPort), so this libserialport-backed shim replaces it. -->
-    <ProjectReference Include="$(LibDmdSerialShimProject)" ReferenceOutputAssembly="false" />
-  </ItemGroup>
-  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
-    <ProjectReference Include="$(LibDmdCoreWindowsProject)" />
-  </ItemGroup>
-  <!-- Cross-platform host-pumped SDL/GL-ES window for macOS/Linux (the SDL2 + ANGLE native
-       runtimes must be supplied alongside; not bundled here). -->
-  <ItemGroup Condition="'$(RuntimeIdentifier)' != 'win-x64' And '$(RuntimeIdentifier)' != ''">
-    <ProjectReference Include="$(LibDmdCoreSdlProject)" />
+    <PackageReference Include="LibDmd.Core" Version="[$(LibDmdVersion)]" />
+    <PackageDownload Include="LibDmd.Core.Unity" Version="[$(LibDmdVersion)]" />
   </ItemGroup>
 
   <Target Name="PluginsDeploy" AfterTargets="AfterBuild">
     <PropertyGroup>
       <UnityPluginsRoot>..\VisualPinball.Engine.DMD.Unity\Plugins</UnityPluginsRoot>
       <UnityNativeDir>$(UnityPluginsRoot)\$(RuntimeIdentifier)</UnityNativeDir>
+      <LibDmdNativeDir>$(NuGetPackageRoot)/libdmd.core.native.$(RuntimeIdentifier)/$(LibDmdVersion)/runtimes/$(RuntimeIdentifier)/native</LibDmdNativeDir>
+      <LibDmdUnityDir>$(NuGetPackageRoot)/libdmd.core.unity/$(LibDmdVersion)/unity/managed</LibDmdUnityDir>
       <!-- All managed assemblies are RID-agnostic, so they live in ONE shared "Any Platform" folder
            instead of being duplicated per-RID. Duplicated managed copies were a trap: a single-RID
            rebuild desynced them and silently broke Unity's Editor compilation. Natives stay per-RID. -->
@@ -51,20 +34,17 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <!-- Managed (shared, one copy). Includes LibDmd.Core, the proxy, the System.* deps, and the
-           platform backend produced by THIS build (LibDmd.Core.Windows on win / LibDmd.Core.Sdl on
-           the others). Both backends only reference LibDmd.Core + NLog and P/Invoke their native
-           lazily, so the one for the "wrong" OS loads dormant and is harmless. The System.IO.Ports
-           facade stub is dropped in favour of the libserialport-backed shim. NLog is provided by VPE. -->
-      <ManagedPlugins Include="$(OutDir)*.dll" Exclude="$(OutDir)NLog.dll;$(OutDir)System.IO.Ports.dll" />
-      <ManagedPlugins Include="$(LibDmdSerialShimDll)" />
+      <!-- The Unity payload supplies both backends and replaces the stock System.IO.Ports with
+           the libserialport-backed Mono shim. The engine supplies NLog. -->
+      <ManagedPlugins Include="@(ReferenceCopyLocalPaths)"
+                      Condition="'%(ReferenceCopyLocalPaths.AssetType)' == 'runtime'
+                                 And '%(ReferenceCopyLocalPaths.Extension)' == '.dll'
+                                 And '%(ReferenceCopyLocalPaths.Filename)' != 'NLog'
+                                 And '%(ReferenceCopyLocalPaths.Filename)' != 'System.IO.Ports'" />
+      <ManagedPlugins Include="$(TargetPath);$(LibDmdUnityDir)/*.dll" />
 
       <!-- Native (per-RID). -->
-      <NativePlugins Include="$(LibDmdNativeRoot)\$(RuntimeIdentifier)\native\*" />
-      <NativePlugins Include="$(LibDmdCostura64Root)\ftd2xx.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
-      <NativePlugins Include="$(LibDmdCostura64Root)\libSkiaSharp.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
-      <NativePlugins Include="$(LibDmdCostura64Root)\sockpp64.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
-      <NativePlugins Include="$(LibDmdCostura64Root)\sqlite3.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64'" />
+      <NativePlugins Include="$(LibDmdNativeDir)/*" />
 
       <!-- Cleanup: managed assemblies (+ metas) left in the per-RID folders by the old layout. The
            '*-*' glob matches only the RID folders (win-x64, linux-x64, osx-x64, osx-arm64), never
@@ -84,23 +64,15 @@
     <MakeDir Directories="$(UnityManagedDir);$(UnityNativeDir)" />
     <Copy SourceFiles="@(ManagedPlugins)" DestinationFolder="$(UnityManagedDir)" SkipUnchangedFiles="true" />
     <Copy SourceFiles="@(NativePlugins)" DestinationFolder="$(UnityNativeDir)" SkipUnchangedFiles="true" />
-    <!-- The shim P/Invokes "libserialport"; deploy the native under that exact name. Windows uses a
-         renamed copy of the Costura libserialport64-0.dll; Linux aliases the versioned .so the
-         zedmd/serum archives stage as libserialport.so.0.1.1. macOS already ships the canonical
-         libserialport.dylib via the native staging. -->
-    <Copy Condition="'$(RuntimeIdentifier)' == 'win-x64'"
-          SourceFiles="$(LibDmdCostura64Root)\libserialport64-0.dll"
-          DestinationFiles="$(UnityNativeDir)\libserialport.dll" SkipUnchangedFiles="true" />
+    <!-- The Linux package contains versioned files. The Unity shim and ZeDMD need these aliases. -->
     <ItemGroup Condition="'$(RuntimeIdentifier)' == 'linux-x64'">
-      <_LinuxSerialPort Include="$(LibDmdNativeRoot)\linux-x64\native\libserialport.so.*" />
+      <_LinuxSerialPort Include="$(LibDmdNativeDir)/libserialport.so.*" />
     </ItemGroup>
     <Copy Condition="'$(RuntimeIdentifier)' == 'linux-x64' And '@(_LinuxSerialPort)' != ''"
           SourceFiles="@(_LinuxSerialPort)"
           DestinationFiles="$(UnityNativeDir)\libserialport.so" SkipUnchangedFiles="true" />
-    <!-- libzedmd.so loads its dependencies by soname from its own folder ($ORIGIN), so they must
-         also exist under those names; the staging only has the fully versioned files. -->
     <ItemGroup Condition="'$(RuntimeIdentifier)' == 'linux-x64'">
-      <_LinuxSockpp Include="$(LibDmdNativeRoot)\linux-x64\native\libsockpp.so.1.*" />
+      <_LinuxSockpp Include="$(LibDmdNativeDir)/libsockpp.so.1.*" />
     </ItemGroup>
     <Copy Condition="'$(RuntimeIdentifier)' == 'linux-x64' And '@(_LinuxSerialPort)' != ''"
           SourceFiles="@(_LinuxSerialPort)"
