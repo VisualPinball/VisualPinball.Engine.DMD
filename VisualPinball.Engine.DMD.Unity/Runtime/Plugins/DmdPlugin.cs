@@ -47,21 +47,25 @@ namespace VisualPinball.Engine.DMD.Player
 			var scene = game.Capabilities.Require<IUnityGameScene>(UnityPluginCapability.GameScene);
 			var effective = WithDmdDeviceIni(game);
 			var settings = DmdPluginFactory.Settings(effective);
-			settings.RomName = game.Identity.Key;
 			_gameSettings = effective;
-			_colorizationLibrary = DmdPluginFactory.Library(effective, game.Identity.Key);
-			var asset = ColorizationCatalog.Select(_colorizationLibrary, game.PackagePath, game.Identity,
-				effective.String("Colorization", "auto"), effective.String("VniKey").Length > 0);
+			// PinMAME can play a compatible ROM in place of the table's own: its colorization first, else the table ROM's. A
+			// colorization selected in the settings is one of the table ROM's.
+			string rom = RunningRom(scene, game.Identity), colorization = effective.String("Colorization", "auto");
+			string key = colorization == "auto" ? rom : game.Identity.Key;
+			var asset = key == game.Identity.Key ? SelectColorization(game, effective, key, colorization) : SubstituteColorization(game, effective, key);
+			if (asset == null && key != game.Identity.Key) asset = SelectColorization(game, effective, key = game.Identity.Key, colorization);
+			if (asset == null && key != rom) _colorizationLibrary = DmdPluginFactory.Library(effective, key = rom);
+			settings.RomName = key;
 			settings.EnableColorization = asset != null;
 			_asset = asset; _settings = settings;
-			_noColorizationReason = asset != null ? null : NoColorizationReason(game.Identity.Key, effective);
+			_noColorizationReason = asset != null ? null : NoColorizationReason(key, effective);
 			_colorizationAsset = asset != null ? asset.Id + " (" + asset.Label + ")" : "none";
 			if (asset != null) {
-				_nativeResources.Own(ColorizationCatalog.Stage(asset, Path.Combine(_application.Configuration.DirectoryFor(_application.Plugin), "cache", "colorizations"), game.Identity.Key, out string staged));
+				_nativeResources.Own(ColorizationCatalog.Stage(asset, Path.Combine(_application.Configuration.DirectoryFor(_application.Plugin), "cache", "colorizations"), key, out string staged));
 				settings.AltColorPath = staged;
 				_stagedColorization = staged;
 			}
-			_application.Logger.Info($"Colorization for {game.Identity.Key}: {_colorizationAsset}, source {asset?.Files[0] ?? _colorizationLibrary}.");
+			_application.Logger.Info($"Colorization for {key}{(key == game.Identity.Key ? "" : $" (table ROM {game.Identity.Key})")}: {_colorizationAsset}, source {asset?.Files[0] ?? _colorizationLibrary}.");
 			ConfigureCabinetOutputs(game, effective, settings);
 			_root = new GameObject("DMD plugin"); _root.SetActive(false); _root.transform.SetParent(scene.Table.transform, false);
 			game.Lifetime.Own(new Subscription(() => { if (_root != null) UnityEngine.Object.Destroy(_root); }));
@@ -88,6 +92,35 @@ namespace VisualPinball.Engine.DMD.Player
 			_root.SetActive(true);
 			DiagnosticsContext.Set(this);
 			return Task.CompletedTask;
+		}
+
+		/// <summary>The ROM the gamelogic engine plays, which PinMAME prepares first; the game's key for other engines.</summary>
+		private static string RunningRom(IUnityGameScene scene, GameIdentity game)
+		{
+			if (game.Provider != "pinmame") return game.Key;
+			string rom = scene.Table.GetComponentInChildren<IRomNameProvider>(true)?.RomName?.Trim().ToLowerInvariant();
+			return string.IsNullOrEmpty(rom) || rom != Path.GetFileName(rom) || rom == "." || rom == ".." ? game.Key : rom;
+		}
+
+		/// <summary>
+		/// The substitute ROM's colorization, or null when it has none or several: the user can only pick among the table ROM's, so
+		/// an ambiguous folder falls back to those.
+		/// </summary>
+		private ColorizationAsset SubstituteColorization(PluginGameContext game, PluginSettingsSnapshot settings, string key)
+		{
+			try {
+				return SelectColorization(game, settings, key, "auto");
+			} catch (InvalidOperationException error) {
+				_application.Logger.Info($"Not using the colorizations of {key}: {error.Message}");
+				return null;
+			}
+		}
+
+		private ColorizationAsset SelectColorization(PluginGameContext game, PluginSettingsSnapshot settings, string key, string selection)
+		{
+			_colorizationLibrary = DmdPluginFactory.Library(settings, key);
+			var identity = key == game.Identity.Key ? game.Identity : new GameIdentity(game.Identity.Provider, key);
+			return ColorizationCatalog.Select(_colorizationLibrary, game.PackagePath, identity, selection, settings.String("VniKey").Length > 0);
 		}
 
 		/// <summary>
