@@ -62,6 +62,18 @@ namespace VisualPinball.Engine.DMD.Tests
 			Assert.That(assets.Single(asset => asset.Id == "game/third/pin2dmd.pac").RequiresKey, Is.True);
 		}
 		[Test]
+		public void GamesWhoseKeyCantNameAFolderHaveNoColorizations()
+		{
+			// a key with a version, like game/1.0: no library folder is theirs, nothing throws
+			Asset("game/1.0/game.crz");
+			var game = new GameIdentity("example", "game/1.0");
+			Assert.That(ColorizationCatalog.IsFolderName(game.Key), Is.False);
+			Assert.That(ColorizationCatalog.Read(_root, game.Key), Is.Empty);
+			Assert.That(ColorizationCatalog.Select(_root, Path.Combine(_root, "Table.vpe"), game, "auto", false), Is.Null);
+			Assert.That(ColorizationCatalog.Read(_root, ".."), Is.Empty);
+			Assert.Throws<ArgumentException>(() => ColorizationCatalog.Stage(new ColorizationAsset("x", "x", Asset("game/game.crz")), Path.Combine(_root, "cache"), game.Key, out _));
+		}
+		[Test]
 		public void AmbiguousAutomaticAndMissingManualChoicesNeverFallBack()
 		{
 			// Variants in subfolders aren't what DmdDevice loads, so automatic selection refuses to guess.

@@ -22,10 +22,14 @@ namespace VisualPinball.Engine.DMD.Player
 	}
 	internal static class ColorizationCatalog
 	{
+		/// <summary>Whether a game key can be the name of its folder in a colorization library.</summary>
+		internal static bool IsFolderName(string game) => !string.IsNullOrWhiteSpace(game) && game == Path.GetFileName(game) && game != "." && game != ".."
+			&& game.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
+
 		internal static IReadOnlyList<ColorizationAsset> Read(string root, string game)
 		{
-			if (string.IsNullOrWhiteSpace(root) || string.IsNullOrWhiteSpace(game)) return Array.Empty<ColorizationAsset>();
-			if (game != Path.GetFileName(game) || game == "." || game == "..") throw new ArgumentException("Invalid game key.");
+			// a game whose key can't name a folder, like one with a version (game/1.0), has no colorizations
+			if (string.IsNullOrWhiteSpace(root) || !IsFolderName(game)) return Array.Empty<ColorizationAsset>();
 			root = Path.GetFullPath(root);
 			string directory = Path.Combine(root, game);
 			if (!Directory.Exists(directory)) return Array.Empty<ColorizationAsset>();
@@ -107,7 +111,7 @@ namespace VisualPinball.Engine.DMD.Player
 		/// <summary>LibDmd accepts a game folder. An owned cache presents exactly the selected files, leaving the library unchanged.</summary>
 		internal static IDisposable Stage(ColorizationAsset asset, string cache, string game, out string root)
 		{
-			if (game != Path.GetFileName(game) || game == "." || game == "..") throw new ArgumentException("Invalid game key.");
+			if (!IsFolderName(game)) throw new ArgumentException("Invalid game key.");
 			root = Path.GetFullPath(Path.Combine(cache, Guid.NewGuid().ToString("N")));
 			string owned = root;
 			if (!owned.StartsWith(Path.GetFullPath(cache) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Invalid cache location.");
