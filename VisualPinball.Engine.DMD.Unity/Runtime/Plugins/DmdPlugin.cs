@@ -54,7 +54,7 @@ namespace VisualPinball.Engine.DMD.Player
 			string key = colorization == "auto" ? rom : game.Identity.Key;
 			var asset = key == game.Identity.Key ? SelectColorization(game, effective, key, colorization) : SubstituteColorization(game, effective, key);
 			if (asset == null && key != game.Identity.Key) asset = SelectColorization(game, effective, key = game.Identity.Key, colorization);
-			if (asset == null && key != rom) _colorizationLibrary = DmdPluginFactory.Library(effective, key = rom);
+			if (asset == null && key != rom) _colorizationLibrary = DmdPluginFactory.Library(game.Settings, key = rom);
 			settings.RomName = key;
 			settings.EnableColorization = asset != null;
 			_asset = asset; _settings = settings;
@@ -118,7 +118,8 @@ namespace VisualPinball.Engine.DMD.Player
 
 		private ColorizationAsset SelectColorization(PluginGameContext game, PluginSettingsSnapshot settings, string key, string selection)
 		{
-			_colorizationLibrary = DmdPluginFactory.Library(settings, key);
+			// the library the user saved, else the ROM's own altcolor in DmdDevice.ini: the imported one is the table ROM's
+			_colorizationLibrary = DmdPluginFactory.Library(game.Settings, key);
 			var identity = key == game.Identity.Key ? game.Identity : new GameIdentity(game.Identity.Provider, key);
 			return ColorizationCatalog.Select(_colorizationLibrary, game.PackagePath, identity, selection, settings.String("VniKey").Length > 0);
 		}
