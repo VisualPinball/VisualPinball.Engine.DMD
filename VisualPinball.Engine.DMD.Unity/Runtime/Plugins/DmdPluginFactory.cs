@@ -32,7 +32,9 @@ namespace VisualPinball.Engine.DMD.Player
 		internal const string Id = "org.visualpinball.dmd";
 		public IReadOnlyList<CabinetOutputRole> CabinetRoles { get; } = Array.AsReadOnly(new[] { CabinetOutputRole.Dmd });
 		private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
-		public PluginDescriptor Descriptor { get; } = new PluginDescriptor(Id, "DMD", "Colorizations, your in-scene DMD and native displays, with optional cabinet hardware.") { EnabledByDefault = true, Category = "Displays", Order = 20 };
+		public PluginDescriptor Descriptor { get; } = new PluginDescriptor(Id, "DMD", "Colorizations, your in-scene DMD and native displays, with optional cabinet hardware.") { EnabledByDefault = true, Category = "Displays", Order = 20,
+			// PinMAME first: it decides which ROM plays, and the colorization follows it
+			After = new[] { "org.visualpinball.pinmame" } };
 		internal static readonly PluginSettingsSchema SettingsSchema = BuildSchema();
 		public PluginSettingsSchema Schema => SettingsSchema;
 		public IPluginSettingsProvider SettingsProvider => this;
