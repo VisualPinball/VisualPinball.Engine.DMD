@@ -69,19 +69,26 @@ namespace VisualPinball.Engine.DMD.Tests
 			var source = VpeGleSource.Create(new DisplayConfig("dmd0", Width, Height), colorize: false, DmdSourceColor.Rgb565);
 			var everyFormat = new EveryFormatDestination("every format");
 			var rgbOnly = new RgbOnlyDestination("rgb only");
+			// red, green, blue, white; black, r16 g32 b16, r1 g1 b1, r11 g23 b11
+			ushort[] pixels = { 0xf800, 0x07e0, 0x001f, 0xffff, 0x0000, 0x8410, 0x0821, 0x5aeb };
+			var frame = new byte[Width * Height * 2];
+			for (var i = 0; i < pixels.Length; i++) {
+				frame[i * 2] = (byte)pixels[i]; // little-endian
+				frame[i * 2 + 1] = (byte)(pixels[i] >> 8);
+			}
 			using (Render(source, everyFormat, rgbOnly)) {
-				var frame = new byte[Width * Height * 2];
-				frame[0] = 0x00; // pure red, little-endian 0xf800
-				frame[1] = 0xf8;
 				source.Push(DisplayFrameFormat.Dmd565, frame, frame.Length);
 			}
 
 			Assert.That(everyFormat.Frames, Has.Count.EqualTo(1), "hardware taking RGB565");
 			Assert.That(everyFormat.Frames[0].Format, Is.EqualTo("Rgb565"));
-			Assert.That(everyFormat.Frames[0].Data[1], Is.EqualTo(0xf8));
+			Assert.That(everyFormat.Frames[0].Data, Is.EqualTo(frame), "RGB565 passes through unchanged");
 			Assert.That(rgbOnly.Frames, Has.Count.EqualTo(1), "RGB24 only");
 			Assert.That(rgbOnly.Frames[0].Format, Is.EqualTo("Rgb24"));
-			Assert.That(rgbOnly.Frames[0].Data[0], Is.EqualTo(255));
+			Assert.That(rgbOnly.Frames[0].Data, Is.EqualTo(new byte[] {
+				255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 255, 255,
+				0, 0, 0, 132, 130, 132, 8, 4, 8, 90, 93, 90,
+			}), "each channel's top bits repeated into its low ones");
 		}
 
 		private static IDisposable Render(VpeGleSource source, params IDestination[] destinations)
