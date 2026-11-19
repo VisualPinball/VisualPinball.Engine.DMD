@@ -7,6 +7,17 @@ using VisualPinball.Unity;
 
 namespace VisualPinball.Engine.DMD.Unity
 {
+	/// <summary>The colour of an uncolorized source's frames, which picks its format in the render graph.</summary>
+	internal enum DmdSourceColor
+	{
+		/// <summary>Gray frames of any bit depth, passed on as 8-bit.</summary>
+		Gray,
+		/// <summary>RGB frames, three bytes per dot.</summary>
+		Rgb24,
+		/// <summary>RGB565 frames, two bytes per dot, little-endian, as color DMD hardware takes them.</summary>
+		Rgb565
+	}
+
 	internal abstract class VpeGleSource : AbstractSource, ISource
 	{
 		public override string Name { get; }
@@ -27,18 +38,34 @@ namespace VisualPinball.Engine.DMD.Unity
 		/// <summary>
 		/// The render graph connects each destination to one format of the source, the first one
 		/// both support, so an uncolorized source offers only the format its frames come in: gray
-		/// (any bit depth, as 8-bit) or RGB. The pipeline is rebuilt when frames switch between them.
+		/// (any bit depth, as 8-bit), RGB or RGB565. The pipeline is rebuilt when frames switch between them.
 		/// </summary>
-		public static VpeGleSource Create(DisplayConfig display, bool colorize, bool rgb)
+		public static VpeGleSource Create(DisplayConfig display, bool colorize, DmdSourceColor color)
 		{
 			if (colorize) {
 				return new ColorizableVpeGleSource(display.Id, display.Width, display.Height);
 			}
 
-			return rgb
-				? new Rgb24VpeGleSource(display.Id, display.Width, display.Height)
-				: new GrayVpeGleSource(display.Id, display.Width, display.Height);
+			return color switch {
+				DmdSourceColor.Rgb24 => new Rgb24VpeGleSource(display.Id, display.Width, display.Height),
+				DmdSourceColor.Rgb565 => new Rgb565VpeGleSource(display.Id, display.Width, display.Height),
+				_ => new GrayVpeGleSource(display.Id, display.Width, display.Height)
+			};
 		}
+
+		/// <summary>The source colour frames of this format need.</summary>
+		public static DmdSourceColor ColorOf(DisplayFrameFormat format) => format switch {
+			DisplayFrameFormat.Dmd24 => DmdSourceColor.Rgb24,
+			DisplayFrameFormat.Dmd565 => DmdSourceColor.Rgb565,
+			_ => DmdSourceColor.Gray
+		};
+
+		/// <summary>Bytes per dot of frames of this format.</summary>
+		public static int BytesPerDot(DisplayFrameFormat format) => format switch {
+			DisplayFrameFormat.Dmd24 => 3,
+			DisplayFrameFormat.Dmd565 => 2,
+			_ => 1
+		};
 
 		/// <summary>
 		/// Pushes a frame from <paramref name="data"/> (the pipeline's reused worker buffer) into
@@ -109,6 +136,24 @@ namespace VisualPinball.Engine.DMD.Unity
 			}
 
 			public IObservable<DmdFrame> GetRgb24Frames() => _rgb24Frames;
+		}
+
+		private sealed class Rgb565VpeGleSource : VpeGleSource, IRgb565Source
+		{
+			private readonly Subject<DmdFrame> _rgb565Frames = new Subject<DmdFrame>();
+
+			public Rgb565VpeGleSource(string displayId, int width, int height) : base(displayId, width, height)
+			{
+			}
+
+			public override void Push(DisplayFrameFormat format, byte[] data, int length)
+			{
+				if (format == DisplayFrameFormat.Dmd565) {
+					_rgb565Frames.OnNext(CreateFrame(data, length, 16));
+				}
+			}
+
+			public IObservable<DmdFrame> GetRgb565Frames() => _rgb565Frames;
 		}
 
 		private sealed class ColorizableVpeGleSource : VpeGleSource, IGray2Source, IGray4Source

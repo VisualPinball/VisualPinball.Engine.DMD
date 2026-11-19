@@ -28,7 +28,7 @@ namespace VisualPinball.Engine.DMD.Tests
 		[TestCase(DisplayFrameFormat.Dmd8, 255)]
 		public void GrayFramesReachBothDestinations(DisplayFrameFormat format, int max)
 		{
-			var source = VpeGleSource.Create(new DisplayConfig("dmd0", Width, Height), colorize: false, rgb: false);
+			var source = VpeGleSource.Create(new DisplayConfig("dmd0", Width, Height), colorize: false, DmdSourceColor.Gray);
 			var everyFormat = new EveryFormatDestination("every format");
 			var rgbOnly = new RgbOnlyDestination("rgb only");
 			using (Render(source, everyFormat, rgbOnly)) {
@@ -47,7 +47,7 @@ namespace VisualPinball.Engine.DMD.Tests
 		[Test]
 		public void RgbFramesReachBothDestinations()
 		{
-			var source = VpeGleSource.Create(new DisplayConfig("dmd0", Width, Height), colorize: false, rgb: true);
+			var source = VpeGleSource.Create(new DisplayConfig("dmd0", Width, Height), colorize: false, DmdSourceColor.Rgb24);
 			var everyFormat = new EveryFormatDestination("every format");
 			var rgbOnly = new RgbOnlyDestination("rgb only");
 			using (Render(source, everyFormat, rgbOnly)) {
@@ -61,6 +61,27 @@ namespace VisualPinball.Engine.DMD.Tests
 			Assert.That(everyFormat.Frames[0].Data[0], Is.EqualTo(200));
 			Assert.That(rgbOnly.Frames, Has.Count.EqualTo(1));
 			Assert.That(rgbOnly.Frames[0].Format, Is.EqualTo("Rgb24"));
+		}
+
+		[Test]
+		public void Rgb565FramesReachBothDestinations()
+		{
+			var source = VpeGleSource.Create(new DisplayConfig("dmd0", Width, Height), colorize: false, DmdSourceColor.Rgb565);
+			var everyFormat = new EveryFormatDestination("every format");
+			var rgbOnly = new RgbOnlyDestination("rgb only");
+			using (Render(source, everyFormat, rgbOnly)) {
+				var frame = new byte[Width * Height * 2];
+				frame[0] = 0x00; // pure red, little-endian 0xf800
+				frame[1] = 0xf8;
+				source.Push(DisplayFrameFormat.Dmd565, frame, frame.Length);
+			}
+
+			Assert.That(everyFormat.Frames, Has.Count.EqualTo(1), "hardware taking RGB565");
+			Assert.That(everyFormat.Frames[0].Format, Is.EqualTo("Rgb565"));
+			Assert.That(everyFormat.Frames[0].Data[1], Is.EqualTo(0xf8));
+			Assert.That(rgbOnly.Frames, Has.Count.EqualTo(1), "RGB24 only");
+			Assert.That(rgbOnly.Frames[0].Format, Is.EqualTo("Rgb24"));
+			Assert.That(rgbOnly.Frames[0].Data[0], Is.EqualTo(255));
 		}
 
 		private static IDisposable Render(VpeGleSource source, params IDestination[] destinations)

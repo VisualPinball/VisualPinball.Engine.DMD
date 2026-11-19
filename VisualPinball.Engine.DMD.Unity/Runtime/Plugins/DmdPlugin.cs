@@ -73,7 +73,7 @@ namespace VisualPinball.Engine.DMD.Player
 			_bridge.DiagnosticsOwner = this;
 			var selection = new PluginResourceSelection(ResourceKind.Display) { Controller = game.ControllerId, Session = game.Session, Role = "dmd",
 				Intent = asset == null ? ResourceView.Original : ResourceView.Identification,
-				Accepts = asset == null ? DisplayEncoding.Gray2 | DisplayEncoding.Gray4 | DisplayEncoding.Luminance8 | DisplayEncoding.Rgb24 : DisplayEncoding.Gray2 | DisplayEncoding.Gray4 };
+				Accepts = asset == null ? DisplayEncoding.Gray2 | DisplayEncoding.Gray4 | DisplayEncoding.Luminance8 | DisplayEncoding.Rgb24 | DisplayEncoding.Rgb565 : DisplayEncoding.Gray2 | DisplayEncoding.Gray4 };
 			string source = effective.String("Source", "auto"); if (source != "auto") selection.ResourceId = PluginResourceChoices.Resolve(game.ControllerId, source);
 			_binding = game.Lifetime.Own(game.Resources.Bind<IPluginDisplaySource>(selection));
 			_bridge.ConfigureManaged(settings, scene.Table, () => {

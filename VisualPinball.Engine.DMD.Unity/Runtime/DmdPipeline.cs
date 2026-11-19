@@ -36,7 +36,7 @@ namespace VisualPinball.Engine.DMD.Unity
 	{
 		private readonly DisplayConfig _display;
 		private readonly VpeGleSource _source;
-		private readonly bool _rgb;
+		private readonly DmdSourceColor _color;
 		private readonly List<IDestination> _destinations;
 		private readonly RenderGraph _renderGraph;
 		private readonly IDisposable _renderer;
@@ -65,12 +65,12 @@ namespace VisualPinball.Engine.DMD.Unity
 		private readonly LogThrottle _frameFailureThrottle = new LogThrottle(3, TimeSpan.FromSeconds(30));
 		private readonly LogThrottle _renderGraphErrorThrottle = new LogThrottle(3, TimeSpan.FromSeconds(30));
 
-		public DmdPipeline(DisplayConfig display, List<IDestination> destinations, AbstractConverter converter, bool flipHorizontally, bool rgb)
+		public DmdPipeline(DisplayConfig display, List<IDestination> destinations, AbstractConverter converter, bool flipHorizontally, DmdSourceColor color)
 		{
 			_display = display;
 			_destinations = destinations;
-			_rgb = rgb;
-			_source = VpeGleSource.Create(display, converter != null, rgb);
+			_color = color;
+			_source = VpeGleSource.Create(display, converter != null, color);
 			_renderGraph = new RenderGraph(new UndisposedReferences(), runOnMainThread: true) {
 				Name = $"VPE DMD ({display.Id})",
 				Source = _source,
@@ -110,11 +110,11 @@ namespace VisualPinball.Engine.DMD.Unity
 		{
 			return string.Equals(_display.Id, displayId, StringComparison.OrdinalIgnoreCase)
 				&& _display.Width == width && _display.Height == height
-				&& (encoding == DisplayEncoding.Rgb24) == _rgb;
+				&& VpeGleSource.ColorOf(GamelogicPluginResources.ToLegacy(encoding)) == _color;
 		}
 
-		/// <summary>Whether the source was built for frames of this format, gray or RGB.</summary>
-		public bool Accepts(DisplayFrameFormat format) => (format == DisplayFrameFormat.Dmd24) == _rgb;
+		/// <summary>Whether the source was built for frames of this format: gray, RGB or RGB565.</summary>
+		public bool Accepts(DisplayFrameFormat format) => VpeGleSource.ColorOf(format) == _color;
 
 		/// <summary>Called on the Unity main thread. Copies the frame and signals the worker.</summary>
 		public void Push(DisplayFrameData frame)
@@ -137,7 +137,7 @@ namespace VisualPinball.Engine.DMD.Unity
 
 		public void Push(in PluginDisplayFrame frame)
 		{
-			int rowBytes = frame.Width * (frame.Encoding == DisplayEncoding.Rgb24 ? 3 : 1);
+			int rowBytes = frame.Width * PluginDisplayFrame.BytesPerPixel(frame.Encoding);
 			int length = checked(rowBytes * frame.Height);
 			lock (_gate) {
 				if (!_running) return;

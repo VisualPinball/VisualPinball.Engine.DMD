@@ -17,7 +17,8 @@ namespace VisualPinball.Unity
 		Segment,
 		AlphaNumeric,
 		Numeric,
-		Video24
+		Video24,
+		Dmd565
 	}
 
 	public class DisplayConfig
