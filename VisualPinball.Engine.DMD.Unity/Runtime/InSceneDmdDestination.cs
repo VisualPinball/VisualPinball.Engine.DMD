@@ -86,7 +86,7 @@ namespace VisualPinball.Engine.DMD.Unity
 
 		public void RenderRgb565(DmdFrame frame)
 		{
-			RenderRgb24(frame.ConvertRgb565ToRgb24());
+			Render(DisplayFrameFormat.Dmd565, frame);
 		}
 
 		public void SetColor(DmdColor color)

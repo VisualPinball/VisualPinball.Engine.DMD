@@ -89,7 +89,7 @@ namespace VisualPinball.Engine.DMD.Player
 		private PluginChoiceCatalog Discover(string provider, PluginChoiceRequest request, CancellationToken cancellation)
 		{
 			cancellation.ThrowIfCancellationRequested();
-			if (provider == "sources") return PluginResourceChoices.Displays(request, DisplayEncoding.Gray2 | DisplayEncoding.Gray4 | DisplayEncoding.Luminance8 | DisplayEncoding.Rgb24);
+			if (provider == "sources") return PluginResourceChoices.Displays(request, DisplayEncoding.Gray2 | DisplayEncoding.Gray4 | DisplayEncoding.Luminance8 | DisplayEncoding.Rgb24 | DisplayEncoding.Rgb565);
 			var choices = new List<PluginChoice>();
 			switch (provider) {
 				case "colorizations":
