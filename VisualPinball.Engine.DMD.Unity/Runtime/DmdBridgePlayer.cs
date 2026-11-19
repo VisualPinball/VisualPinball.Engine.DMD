@@ -314,7 +314,11 @@ namespace VisualPinball.Engine.DMD.Unity
 				}
 			}
 
-			// the source carries gray, RGB or RGB565 frames, see VpeGleSource.Create()
+			// the source carries gray, RGB or RGB565 frames, see VpeGleSource.Create(); a short frame
+			// is dropped before it can rebuild a working pipeline
+			if (frame.Data == null || frame.Data.Length < _currentDisplay.Width * _currentDisplay.Height * VpeGleSource.BytesPerDot(frame.Format)) {
+				return;
+			}
 			if (!_pipeline.Accepts(frame.Format)) {
 				EnsurePipeline(_currentDisplay, force: true, color: VpeGleSource.ColorOf(frame.Format));
 				if (_pipeline == null) {
@@ -402,9 +406,15 @@ namespace VisualPinball.Engine.DMD.Unity
 				return;
 			}
 
-			var converter = CreateConverter();
+			// colorizers take gray frames: frames that come in color pass through, and the producer keeps its format
+			AbstractConverter converter = null;
+			if (_sourceColor == DmdSourceColor.Gray) {
+				converter = CreateConverter();
+				RequestSourceFrameFormat(converter != null ? DisplayFrameFormat.Dmd4 : DisplayFrameFormat.Dmd8);
+			} else {
+				_colorization = "none (the game sends color)";
+			}
 			_resolvedConverter = converter?.Name ?? "none";
-			RequestSourceFrameFormat(converter != null ? DisplayFrameFormat.Dmd4 : DisplayFrameFormat.Dmd8);
 			_pipeline = new DmdPipeline(display, destinations, converter, _settings.FlipHorizontally, _sourceColor);
 			Logger.Info("[DMD] Pipeline for {DisplayId} ({Width}x{Height}) created with {Count} destination(s): {Destinations:l}, colorization: {Colorization:l}.",
 				display.Id, display.Width, display.Height, destinations.Count, _destinationNames, _colorization);
