@@ -123,12 +123,18 @@ namespace VisualPinball.Engine.DMD.Unity
 				return;
 			}
 
+			// a short frame would be read past its end further down the graph
+			int length = _display.Width * _display.Height * VpeGleSource.BytesPerDot(frame.Format);
+			if (frame.Data.Length < length) {
+				return;
+			}
+
 			lock (_gate) {
-				if (_pending == null || _pending.Length < frame.Data.Length) {
-					_pending = new byte[frame.Data.Length];
+				if (_pending == null || _pending.Length < length) {
+					_pending = new byte[length];
 				}
-				Buffer.BlockCopy(frame.Data, 0, _pending, 0, frame.Data.Length);
-				_pendingLength = frame.Data.Length;
+				Buffer.BlockCopy(frame.Data, 0, _pending, 0, length);
+				_pendingLength = length;
 				_pendingFormat = frame.Format;
 				_hasPending = true;
 			}
