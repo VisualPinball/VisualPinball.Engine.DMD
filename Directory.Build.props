@@ -1,5 +1,5 @@
 <Project>
   <PropertyGroup>
-    <LibDmdVersion>2.5.1</LibDmdVersion>
+    <LibDmdVersion>2.5.2</LibDmdVersion>
   </PropertyGroup>
 </Project>
