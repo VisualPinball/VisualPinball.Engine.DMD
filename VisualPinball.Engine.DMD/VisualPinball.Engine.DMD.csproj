@@ -80,6 +80,10 @@
     <Copy Condition="'$(RuntimeIdentifier)' == 'linux-x64' And '@(_LinuxSockpp)' != ''"
           SourceFiles="@(_LinuxSockpp)"
           DestinationFiles="$(UnityNativeDir)\libsockpp.so.1" SkipUnchangedFiles="true" />
+    <!-- The Windows package ships libserialport.dll, but zedmd64.dll imports it as libserialport64-0.dll. -->
+    <Copy Condition="'$(RuntimeIdentifier)' == 'win-x64' And Exists('$(LibDmdNativeDir)/libserialport.dll')"
+          SourceFiles="$(LibDmdNativeDir)/libserialport.dll"
+          DestinationFiles="$(UnityNativeDir)\libserialport64-0.dll" SkipUnchangedFiles="true" />
     <Delete Files="@(StaleManagedInRid)" />
     <Delete Files="@(StaleNLogPlugins)" />
   </Target>
